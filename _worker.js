@@ -495,6 +495,50 @@ function getUserAdminLoginHTML(error = '') {
 </html>`;
 }
 
+// D1未配置提示页面
+function getNoD1HTML() {
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>配置提示 - 用户管理</title>
+    <style>
+        :root { --primary: #6366f1; --bg: #0f172a; --card: #1e293b; --border: #334155; --text: #f1f5f9; --warning: #f59e0b; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .card { background: var(--card); padding: 40px; border-radius: 16px; width: 100%; max-width: 500px; border: 1px solid var(--border); text-align: center; }
+        h1 { margin-bottom: 20px; font-size: 1.5rem; }
+        .icon { font-size: 48px; margin-bottom: 20px; }
+        .warning { background: rgba(245, 158, 11, 0.2); color: #fcd34d; padding: 16px; border-radius: 8px; margin: 20px 0; border: 1px solid var(--warning); text-align: left; }
+        .warning h3 { margin-bottom: 10px; }
+        .steps { text-align: left; margin: 20px 0; }
+        .steps li { margin: 10px 0; color: #94a3b8; }
+        .steps code { background: var(--bg); padding: 2px 6px; border-radius: 4px; color: var(--primary); }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">⚠️</div>
+        <h1>需要配置 D1 数据库</h1>
+        <div class="warning">
+            <h3>用户管理功能需要绑定 D1 数据库</h3>
+            <p>请在 Cloudflare Dashboard 中完成以下配置：</p>
+        </div>
+        <ol class="steps">
+            <li>进入 <strong>Workers & Pages</strong> → <strong>D1 SQL Database</strong></li>
+            <li>创建一个新的数据库（如：<code>edgetunnel-users</code>）</li>
+            <li>进入你的 Pages 项目 → <strong>Settings</strong> → <strong>Functions</strong></li>
+            <li>在 <strong>D1 database bindings</strong> 添加绑定</li>
+            <li>Variable name 填写：<code>DB</code></li>
+            <li>选择刚创建的数据库</li>
+            <li>保存后重新部署</li>
+        </ol>
+    </div>
+</body>
+</html>`;
+}
+
 ///////////////////////////////////////////////////////主程序入口///////////////////////////////////////////////
 export default {
     async fetch(request, env, ctx) {
@@ -524,7 +568,12 @@ export default {
             const 用户管理密码 = env.USER_ADMIN || env.user_admin;
             const 访问路径Lower = url.pathname.slice(1).toLowerCase();
 
-            if (用户管理密码 && env.DB && (访问路径Lower === 'user-admin' || 访问路径Lower.startsWith('user-admin/'))) {
+            if (用户管理密码 && (访问路径Lower === 'user-admin' || 访问路径Lower.startsWith('user-admin/'))) {
+                // 如果没有D1绑定，显示配置提示
+                if (!env.DB) {
+                    return new Response(getNoD1HTML(), { status: 200, headers: { 'Content-Type': 'text/html;charset=utf-8' } });
+                }
+
                 // 初始化D1数据库
                 await initD1Database(env);
 
