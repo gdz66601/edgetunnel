@@ -9,26 +9,26 @@ const UUID验证缓存 = new Map();
 const 缓存有效期 = 5 * 60 * 1000; // 5分钟
 
 function 获取UUID缓存(uuid) {
-	const cached = UUID验证缓存.get(uuid);
-	if (cached && cached.expiresAt > Date.now()) {
-		return cached.data; // { valid: true/false, reason: '...' }
-	}
-	if (cached) UUID验证缓存.delete(uuid);
-	return null;
+    const cached = UUID验证缓存.get(uuid);
+    if (cached && cached.expiresAt > Date.now()) {
+        return cached.data; // { valid: true/false, reason: '...' }
+    }
+    if (cached) UUID验证缓存.delete(uuid);
+    return null;
 }
 
 function 设置UUID缓存(uuid, isValid, reason = '') {
-	UUID验证缓存.set(uuid, {
-		data: { valid: isValid, reason },
-		expiresAt: Date.now() + 缓存有效期
-	});
+    UUID验证缓存.set(uuid, {
+        data: { valid: isValid, reason },
+        expiresAt: Date.now() + 缓存有效期
+    });
 }
 
 function 清理过期缓存() {
-	const now = Date.now();
-	for (const [key, value] of UUID验证缓存.entries()) {
-		if (value.expiresAt <= now) UUID验证缓存.delete(key);
-	}
+    const now = Date.now();
+    for (const [key, value] of UUID验证缓存.entries()) {
+        if (value.expiresAt <= now) UUID验证缓存.delete(key);
+    }
 }
 
 ///////////////////////////////////////////////////////主程序入口///////////////////////////////////////////////
@@ -387,59 +387,59 @@ export default {
                     const authCookie = cookies.split(';').find(c => c.trim().startsWith('auth='))?.split('=')[1];
                     if (authCookie && authCookie == await MD5MD5(UA + 加密秘钥 + 管理员密码)) return fetch(new Request('https://speed.cloudflare.com/locations', { headers: { 'Referer': 'https://speed.cloudflare.com/' } }));
                 } else if (访问路径 === 'robots.txt') return new Response('User-agent: *\nDisallow: /', { status: 200, headers: { 'Content-Type': 'text/plain; charset=UTF-8' } });
-                } else if (访问路径 === 'usermgmt/login') {//用户管理面板登录
-                    const 用户管理密码 = env.USER_ADMIN || env.USERADMIN;
-                    if (!用户管理密码) return new Response('未配置用户管理密码，请设置 USER_ADMIN 环境变量', { status: 500 });
+            } else if (访问路径 === 'usermgmt/login') {//用户管理面板登录
+                const 用户管理密码 = env.USER_ADMIN || env.USERADMIN;
+                if (!用户管理密码) return new Response('未配置用户管理密码，请设置 USER_ADMIN 环境变量', { status: 500 });
 
-                    if (request.method === 'POST') {
-                        const formData = await request.text();
-                        const params = new URLSearchParams(formData);
-                        const 输入密码 = params.get('password');
+                if (request.method === 'POST') {
+                    const formData = await request.text();
+                    const params = new URLSearchParams(formData);
+                    const 输入密码 = params.get('password');
 
-                        if (输入密码 === 用户管理密码) {
-                            const 响应 = new Response(JSON.stringify({ success: true }), { status: 200 });
-                            响应.headers.set('Set-Cookie', `usermgmt_auth=${await MD5MD5(UA + 加密秘钥 + 用户管理密码)}; Path=/; Max-Age=86400; HttpOnly`);
-                            return 响应;
-                        }
-                        return new Response(JSON.stringify({ success: false }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+                    if (输入密码 === 用户管理密码) {
+                        const 响应 = new Response(JSON.stringify({ success: true }), { status: 200 });
+                        响应.headers.set('Set-Cookie', `usermgmt_auth=${await MD5MD5(UA + 加密秘钥 + 用户管理密码)}; Path=/; Max-Age=86400; HttpOnly`);
+                        return 响应;
                     }
+                    return new Response(JSON.stringify({ success: false }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+                }
 
-                    return new Response(await 用户管理登录页面(), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' } });
+                return new Response(await 用户管理登录页面(), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' } });
 
-                } else if (访问路径 === 'usermgmt/logout') {//用户管理面板登出
-                    const 响应 = new Response('重定向中...', { status: 302, headers: { 'Location': '/usermgmt/login' } });
-                    响应.headers.set('Set-Cookie', 'usermgmt_auth=; Path=/; Max-Age=0; HttpOnly');
-                    return 响应;
+            } else if (访问路径 === 'usermgmt/logout') {//用户管理面板登出
+                const 响应 = new Response('重定向中...', { status: 302, headers: { 'Location': '/usermgmt/login' } });
+                响应.headers.set('Set-Cookie', 'usermgmt_auth=; Path=/; Max-Age=0; HttpOnly');
+                return 响应;
 
-                } else if (访问路径.startsWith('usermgmt')) {//用户管理面板
-                    const 用户管理密码 = env.USER_ADMIN || env.USERADMIN;
-                    if (!用户管理密码) return new Response('未配置用户管理密码，请设置 USER_ADMIN 环境变量', { status: 500 });
+            } else if (访问路径.startsWith('usermgmt')) {//用户管理面板
+                const 用户管理密码 = env.USER_ADMIN || env.USERADMIN;
+                if (!用户管理密码) return new Response('未配置用户管理密码，请设置 USER_ADMIN 环境变量', { status: 500 });
 
-                    const cookies = request.headers.get('Cookie') || '';
-                    const authCookie = cookies.split(';').find(c => c.trim().startsWith('usermgmt_auth='))?.split('=')[1];
+                const cookies = request.headers.get('Cookie') || '';
+                const authCookie = cookies.split(';').find(c => c.trim().startsWith('usermgmt_auth='))?.split('=')[1];
 
-                    if (!authCookie || authCookie !== await MD5MD5(UA + 加密秘钥 + 用户管理密码)) {
-                        return new Response('重定向中...', { status: 302, headers: { 'Location': '/usermgmt/login' } });
-                    }
+                if (!authCookie || authCookie !== await MD5MD5(UA + 加密秘钥 + 用户管理密码)) {
+                    return new Response('重定向中...', { status: 302, headers: { 'Location': '/usermgmt/login' } });
+                }
 
-                    if (!env.DB) {
-                        return new Response('D1 数据库未配置，请检查 wrangler.toml', { status: 500 });
-                    }
+                if (!env.DB) {
+                    return new Response('D1 数据库未配置，请检查 wrangler.toml', { status: 500 });
+                }
 
-                    // POST 请求处理（CRUD 操作）
-                    if (request.method === 'POST') {
-                        const formData = await request.text();
-                        const params = new URLSearchParams(formData);
-                        const action = params.get('action');
+                // POST 请求处理（CRUD 操作）
+                if (request.method === 'POST') {
+                    const formData = await request.text();
+                    const params = new URLSearchParams(formData);
+                    const action = params.get('action');
 
-                        if (action === 'add' || action === 'edit') {
-                            const uuid = params.get('uuid');
-                            const enabled = params.get('enabled') === 'on' ? 1 : 0;
-                            const expires_at = params.get('expires_at') ? parseInt(params.get('expires_at')) : null;
-                            const remark = params.get('remark') || '';
-                            const now = Date.now();
+                    if (action === 'add' || action === 'edit') {
+                        const uuid = params.get('uuid');
+                        const enabled = params.get('enabled') === 'on' ? 1 : 0;
+                        const expires_at = params.get('expires_at') ? parseInt(params.get('expires_at')) : null;
+                        const remark = params.get('remark') || '';
+                        const now = Date.now();
 
-                            await env.DB.prepare(`
+                        await env.DB.prepare(`
                                 INSERT INTO users (uuid, enabled, expires_at, created_at, updated_at, remark)
                                 VALUES (?, ?, ?, ?, ?, ?)
                                 ON CONFLICT(uuid) DO UPDATE SET
@@ -449,77 +449,76 @@ export default {
                                     remark = excluded.remark
                             `).bind(uuid, enabled, expires_at, now, now, remark).run();
 
-                            UUID验证缓存.delete(uuid);
-                            return new Response('重定向中...', { status: 302, headers: { 'Location': '/usermgmt' } });
+                        UUID验证缓存.delete(uuid);
+                        return new Response('重定向中...', { status: 302, headers: { 'Location': '/usermgmt' } });
 
-                        } else if (action === 'delete') {
-                            const uuid = params.get('uuid');
-                            await env.DB.prepare('DELETE FROM users WHERE uuid = ?').bind(uuid).run();
-                            UUID验证缓存.delete(uuid);
-                            return new Response('重定向中...', { status: 302, headers: { 'Location': '/usermgmt' } });
-                        }
-                    }
-
-                    // GET 请求 - 显示用户列表
-                    if (访问路径 === 'usermgmt' || 访问路径 === 'usermgmt/') {
-                        const users = await env.DB.prepare('SELECT * FROM users ORDER BY created_at DESC').all();
-                        return new Response(await 用户管理面板页面(users.results || []), {
-                            status: 200,
-                            headers: { 'Content-Type': 'text/html; charset=UTF-8' }
-                        });
-                    }
-
-                    // GET /usermgmt/logs/:uuid - 查看用户订阅记录
-                    if (访问路径.startsWith('usermgmt/logs/')) {
-                        const uuid = 访问路径.replace('usermgmt/logs/', '');
-                        const logs = await env.DB.prepare('SELECT * FROM subscription_logs WHERE uuid = ? ORDER BY timestamp DESC LIMIT 100')
-                            .bind(uuid).all();
-                        return new Response(await 用户日志页面(uuid, logs.results || []), {
-                            status: 200,
-                            headers: { 'Content-Type': 'text/html; charset=UTF-8' }
-                        });
-                    }
+                    } else if (action === 'delete') {
+                        const uuid = params.get('uuid');
+                        await env.DB.prepare('DELETE FROM users WHERE uuid = ?').bind(uuid).run();
+                        UUID验证缓存.delete(uuid);
+                        return new Response('重定向中...', { status: 302, headers: { 'Location': '/usermgmt' } });
                     }
                 }
-            } else if (!envUUID) return fetch(Pages静态页面 + '/noKV').then(r => { const headers = new Headers(r.headers); headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); headers.set('Pragma', 'no-cache'); headers.set('Expires', '0'); return new Response(r.body, { status: 404, statusText: r.statusText, headers }); });
-        } else if (管理员密码) {// ws代理
-            // 【新增】验证 UUID 白名单（使用缓存）
-            const 验证结果 = await 验证UUID(userID, env);
-            if (!验证结果.valid) {
-                return new Response(
-                    `WebSocket 连接被拒绝: ${验证结果.reason}`,
-                    { status: 403, headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
-                );
-            }
 
-            await 反代参数获取(request);
-            return await 处理WS请求(request, userID);
+                // GET 请求 - 显示用户列表
+                if (访问路径 === 'usermgmt' || 访问路径 === 'usermgmt/') {
+                    const users = await env.DB.prepare('SELECT * FROM users ORDER BY created_at DESC').all();
+                    return new Response(await 用户管理面板页面(users.results || []), {
+                        status: 200,
+                        headers: { 'Content-Type': 'text/html; charset=UTF-8' }
+                    });
+                }
+
+                // GET /usermgmt/logs/:uuid - 查看用户订阅记录
+                if (访问路径.startsWith('usermgmt/logs/')) {
+                    const uuid = 访问路径.replace('usermgmt/logs/', '');
+                    const logs = await env.DB.prepare('SELECT * FROM subscription_logs WHERE uuid = ? ORDER BY timestamp DESC LIMIT 100')
+                        .bind(uuid).all();
+                    return new Response(await 用户日志页面(uuid, logs.results || []), {
+                        status: 200,
+                        headers: { 'Content-Type': 'text/html; charset=UTF-8' }
+                    });
+                }
+            }
+        } else if (!envUUID) return fetch(Pages静态页面 + '/noKV').then(r => { const headers = new Headers(r.headers); headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); headers.set('Pragma', 'no-cache'); headers.set('Expires', '0'); return new Response(r.body, { status: 404, statusText: r.statusText, headers }); });
+    } else if(管理员密码) {// ws代理
+        // 【新增】验证 UUID 白名单（使用缓存）
+        const 验证结果 = await 验证UUID(userID, env);
+        if (!验证结果.valid) {
+            return new Response(
+                `WebSocket 连接被拒绝: ${验证结果.reason}`,
+                { status: 403, headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
+            );
         }
+
+        await 反代参数获取(request);
+        return await 处理WS请求(request, userID);
+    }
 
         let 伪装页URL = env.URL || 'nginx';
-        if (伪装页URL && 伪装页URL !== 'nginx' && 伪装页URL !== '1101') {
-            伪装页URL = 伪装页URL.trim().replace(/\/$/, '');
-            if (!伪装页URL.match(/^https?:\/\//i)) 伪装页URL = 'https://' + 伪装页URL;
-            if (伪装页URL.toLowerCase().startsWith('http://')) 伪装页URL = 'https://' + 伪装页URL.substring(7);
-            try { const u = new URL(伪装页URL); 伪装页URL = u.protocol + '//' + u.host; } catch (e) { 伪装页URL = 'nginx'; }
-        }
-        if (伪装页URL === '1101') return new Response(await html1101(url.host, 访问IP), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' } });
-        try {
-            const 反代URL = new URL(伪装页URL), 新请求头 = new Headers(request.headers);
-            新请求头.set('Host', 反代URL.host);
-            新请求头.set('Referer', 反代URL.origin);
-            新请求头.set('Origin', 反代URL.origin);
-            if (!新请求头.has('User-Agent') && UA && UA !== 'null') 新请求头.set('User-Agent', UA);
-            const 反代响应 = await fetch(反代URL.origin + url.pathname + url.search, { method: request.method, headers: 新请求头, body: request.body, cf: request.cf });
-            const 内容类型 = 反代响应.headers.get('content-type') || '';
-            // 只处理文本类型的响应
-            if (/text|javascript|json|xml/.test(内容类型)) {
-                const 响应内容 = (await 反代响应.text()).replaceAll(反代URL.host, url.host);
-                return new Response(响应内容, { status: 反代响应.status, headers: { ...Object.fromEntries(反代响应.headers), 'Cache-Control': 'no-store' } });
-            }
-            return 反代响应;
-        } catch (error) { }
-        return new Response(await nginx(), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' } });
+    if(伪装页URL && 伪装页URL !== 'nginx' && 伪装页URL !== '1101') {
+    伪装页URL = 伪装页URL.trim().replace(/\/$/, '');
+    if (!伪装页URL.match(/^https?:\/\//i)) 伪装页URL = 'https://' + 伪装页URL;
+    if (伪装页URL.toLowerCase().startsWith('http://')) 伪装页URL = 'https://' + 伪装页URL.substring(7);
+    try { const u = new URL(伪装页URL); 伪装页URL = u.protocol + '//' + u.host; } catch (e) { 伪装页URL = 'nginx'; }
+}
+if (伪装页URL === '1101') return new Response(await html1101(url.host, 访问IP), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' } });
+try {
+    const 反代URL = new URL(伪装页URL), 新请求头 = new Headers(request.headers);
+    新请求头.set('Host', 反代URL.host);
+    新请求头.set('Referer', 反代URL.origin);
+    新请求头.set('Origin', 反代URL.origin);
+    if (!新请求头.has('User-Agent') && UA && UA !== 'null') 新请求头.set('User-Agent', UA);
+    const 反代响应 = await fetch(反代URL.origin + url.pathname + url.search, { method: request.method, headers: 新请求头, body: request.body, cf: request.cf });
+    const 内容类型 = 反代响应.headers.get('content-type') || '';
+    // 只处理文本类型的响应
+    if (/text|javascript|json|xml/.test(内容类型)) {
+        const 响应内容 = (await 反代响应.text()).replaceAll(反代URL.host, url.host);
+        return new Response(响应内容, { status: 反代响应.status, headers: { ...Object.fromEntries(反代响应.headers), 'Cache-Control': 'no-store' } });
+    }
+    return 反代响应;
+} catch (error) { }
+return new Response(await nginx(), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' } });
     }
 };
 ///////////////////////////////////////////////////////UUID验证函数///////////////////////////////////////////////
@@ -530,65 +529,65 @@ export default {
  * @returns {Promise<{valid: boolean, reason: string}>}
  */
 async function 验证UUID(uuid, env) {
-	// 1. 检查缓存
-	const cached = 获取UUID缓存(uuid);
-	if (cached) {
-		console.log(`[UUID缓存] 命中: ${uuid} - ${cached.valid ? '有效' : '无效'}`);
-		return cached;
-	}
+    // 1. 检查缓存
+    const cached = 获取UUID缓存(uuid);
+    if (cached) {
+        console.log(`[UUID缓存] 命中: ${uuid} - ${cached.valid ? '有效' : '无效'}`);
+        return cached;
+    }
 
-	// 2. 环境变量兜底（向后兼容）
-	if (!env.DB) {
-		console.log('[UUID验证] D1 未配置，放行所有用户');
-		const result = { valid: true, reason: 'D1未启用' };
-		设置UUID缓存(uuid, true, 'D1未启用');
-		return result;
-	}
+    // 2. 环境变量兜底（向后兼容）
+    if (!env.DB) {
+        console.log('[UUID验证] D1 未配置，放行所有用户');
+        const result = { valid: true, reason: 'D1未启用' };
+        设置UUID缓存(uuid, true, 'D1未启用');
+        return result;
+    }
 
-	try {
-		// 3. 从 D1 查询用户
-		const user = await env.DB
-			.prepare('SELECT enabled, expires_at, remark FROM users WHERE uuid = ?')
-			.bind(uuid)
-			.first();
+    try {
+        // 3. 从 D1 查询用户
+        const user = await env.DB
+            .prepare('SELECT enabled, expires_at, remark FROM users WHERE uuid = ?')
+            .bind(uuid)
+            .first();
 
-		if (!user) {
-			console.log(`[UUID验证] 用户不存在: ${uuid}`);
-			const result = { valid: false, reason: 'UUID不在白名单中' };
-			设置UUID缓存(uuid, false, result.reason);
-			return result;
-		}
+        if (!user) {
+            console.log(`[UUID验证] 用户不存在: ${uuid}`);
+            const result = { valid: false, reason: 'UUID不在白名单中' };
+            设置UUID缓存(uuid, false, result.reason);
+            return result;
+        }
 
-		// 4. 检查是否启用
-		if (!user.enabled) {
-			console.log(`[UUID验证] 用户已禁用: ${uuid}`);
-			const result = { valid: false, reason: '用户已被禁用' };
-			设置UUID缓存(uuid, false, result.reason);
-			return result;
-		}
+        // 4. 检查是否启用
+        if (!user.enabled) {
+            console.log(`[UUID验证] 用户已禁用: ${uuid}`);
+            const result = { valid: false, reason: '用户已被禁用' };
+            设置UUID缓存(uuid, false, result.reason);
+            return result;
+        }
 
-		// 5. 检查是否过期
-		const now = Date.now();
-		if (user.expires_at && user.expires_at < now) {
-			console.log(`[UUID验证] 用户已过期: ${uuid} (${new Date(user.expires_at).toLocaleString()})`);
-			const result = { valid: false, reason: '用户已过期' };
-			设置UUID缓存(uuid, false, result.reason);
-			return result;
-		}
+        // 5. 检查是否过期
+        const now = Date.now();
+        if (user.expires_at && user.expires_at < now) {
+            console.log(`[UUID验证] 用户已过期: ${uuid} (${new Date(user.expires_at).toLocaleString()})`);
+            const result = { valid: false, reason: '用户已过期' };
+            设置UUID缓存(uuid, false, result.reason);
+            return result;
+        }
 
-		// 6. 验证通过
-		console.log(`[UUID验证] 验证通过: ${uuid} - ${user.remark || '无备注'}`);
-		const result = { valid: true, reason: 'OK' };
-		设置UUID缓存(uuid, true, 'OK');
-		return result;
+        // 6. 验证通过
+        console.log(`[UUID验证] 验证通过: ${uuid} - ${user.remark || '无备注'}`);
+        const result = { valid: true, reason: 'OK' };
+        设置UUID缓存(uuid, true, 'OK');
+        return result;
 
-	} catch (error) {
-		console.error(`[UUID验证] D1 查询失败: ${error.message}`);
-		// D1 查询失败时放行（避免服务中断）
-		const result = { valid: true, reason: 'D1查询失败-放行' };
-		设置UUID缓存(uuid, true, 'D1查询失败');
-		return result;
-	}
+    } catch (error) {
+        console.error(`[UUID验证] D1 查询失败: ${error.message}`);
+        // D1 查询失败时放行（避免服务中断）
+        const result = { valid: true, reason: 'D1查询失败-放行' };
+        设置UUID缓存(uuid, true, 'D1查询失败');
+        return result;
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////WS传输数据///////////////////////////////////////////////
@@ -2320,32 +2319,32 @@ async function html1101(host, 访问IP) {
  * @param {string} uuid - 用户 UUID
  */
 async function 记录订阅访问(env, request, uuid) {
-	if (!env.DB) return;
+    if (!env.DB) return;
 
-	try {
-		await env.DB
-			.prepare(`
+    try {
+        await env.DB
+            .prepare(`
 				INSERT INTO subscription_logs (uuid, ip_address, country, user_agent, timestamp)
 				VALUES (?, ?, ?, ?, ?)
 			`)
-			.bind(
-				uuid,
-				request.headers.get('CF-Connecting-IP') || 'Unknown',
-				request.cf?.country || 'Unknown',
-				request.headers.get('User-Agent') || 'Unknown',
-				Date.now()
-			)
-			.run();
+            .bind(
+                uuid,
+                request.headers.get('CF-Connecting-IP') || 'Unknown',
+                request.cf?.country || 'Unknown',
+                request.headers.get('User-Agent') || 'Unknown',
+                Date.now()
+            )
+            .run();
 
-		console.log(`[订阅记录] UUID: ${uuid}`);
-	} catch (error) {
-		console.error(`[订阅记录] 写入失败: ${error.message}`);
-	}
+        console.log(`[订阅记录] UUID: ${uuid}`);
+    } catch (error) {
+        console.error(`[订阅记录] 写入失败: ${error.message}`);
+    }
 }
 
 ///////////////////////////////////////////////////////用户管理面板HTML///////////////////////////////////////////////
 async function 用户管理登录页面() {
-	return `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -2406,11 +2405,11 @@ async function 用户管理登录页面() {
 }
 
 async function 用户管理面板页面(users) {
-	const userRows = users.map(user => {
-		const expiresDate = user.expires_at ? new Date(user.expires_at).toLocaleString('zh-CN') : '永久有效';
-		const statusBadge = user.enabled ? '<span class="badge badge-success">启用</span>' : '<span class="badge badge-disabled">禁用</span>';
-		const expiresStatus = user.expires_at && user.expires_at < Date.now() ? '<span class="badge badge-expired">已过期</span>' : '';
-		return `
+    const userRows = users.map(user => {
+        const expiresDate = user.expires_at ? new Date(user.expires_at).toLocaleString('zh-CN') : '永久有效';
+        const statusBadge = user.enabled ? '<span class="badge badge-success">启用</span>' : '<span class="badge badge-disabled">禁用</span>';
+        const expiresStatus = user.expires_at && user.expires_at < Date.now() ? '<span class="badge badge-expired">已过期</span>' : '';
+        return `
 			<tr>
 				<td><code>${user.uuid}</code></td>
 				<td>${statusBadge} ${expiresStatus}</td>
@@ -2423,9 +2422,9 @@ async function 用户管理面板页面(users) {
 				</td>
 			</tr>
 		`;
-	}).join('');
+    }).join('');
 
-	return `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -2618,9 +2617,9 @@ async function 用户管理面板页面(users) {
 }
 
 async function 用户日志页面(uuid, logs) {
-	const logRows = logs.map(log => {
-		const date = new Date(log.timestamp).toLocaleString('zh-CN');
-		return `
+    const logRows = logs.map(log => {
+        const date = new Date(log.timestamp).toLocaleString('zh-CN');
+        return `
 			<tr>
 				<td>${date}</td>
 				<td>${log.ip_address}</td>
@@ -2628,9 +2627,9 @@ async function 用户日志页面(uuid, logs) {
 				<td>${log.user_agent || '-'}</td>
 			</tr>
 		`;
-	}).join('');
+    }).join('');
 
-	return `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
