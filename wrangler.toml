@@ -3,6 +3,12 @@ main = "_worker.js"
 compatibility_date = "2025-11-04"
 keep_vars = true
 
+# D1 数据库绑定（用户管理系统）
+[[d1_databases]]
+binding = "DB"
+database_name = "edgetunnel_db"
+database_id = ""			# 执行 wrangler d1 create edgetunnel_db 后填入
+
 #[[kv_namespaces]]
 #binding = "KV"			#KV绑定名默认不可修改
 #id = ""				#KV数据库id

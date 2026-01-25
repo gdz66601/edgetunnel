@@ -3,9 +3,51 @@ let config_JSON, 反代IP = '', 启用SOCKS5反代 = null, 启用SOCKS5全局反
 let 缓存反代IP, 缓存反代解析数组, 缓存反代数组索引 = 0, 启用反代兜底 = true;
 let SOCKS5白名单 = ['*tapecontent.net', '*cloudatacdn.com', '*loadshare.org', '*cdn-centaurus.com', 'scholar.google.com'];
 const Pages静态页面 = 'https://edt-pages.github.io';
+
+// UUID 验证缓存（5分钟）- D1 用户管理系统
+const UUID验证缓存 = new Map();
+const 缓存有效期 = 5 * 60 * 1000; // 5分钟
+
+function 获取UUID缓存(uuid) {
+	const cached = UUID验证缓存.get(uuid);
+	if (cached && cached.expiresAt > Date.now()) {
+		return cached.data; // { valid: true/false, reason: '...' }
+	}
+	if (cached) UUID验证缓存.delete(uuid);
+	return null;
+}
+
+function 设置UUID缓存(uuid, isValid, reason = '') {
+	UUID验证缓存.set(uuid, {
+		data: { valid: isValid, reason },
+		expiresAt: Date.now() + 缓存有效期
+	});
+}
+
+function 清理过期缓存() {
+	const now = Date.now();
+	for (const [key, value] of UUID验证缓存.entries()) {
+		if (value.expiresAt <= now) UUID验证缓存.delete(key);
+	}
+}
+
 ///////////////////////////////////////////////////////主程序入口///////////////////////////////////////////////
 export default {
     async fetch(request, env, ctx) {
+        // 定期清理过期缓存（1%概率）
+        if (Math.random() < 0.01) {
+            清理过期缓存();
+
+            // 清理旧订阅记录（保留30天）
+            if (env.DB && Math.random() < 0.1) {
+                ctx.waitUntil(
+                    env.DB.prepare('DELETE FROM subscription_logs WHERE timestamp < ?')
+                        .bind(Date.now() - 30 * 24 * 60 * 60 * 1000)
+                        .run()
+                );
+            }
+        }
+
         const url = new URL(request.url);
         const UA = request.headers.get('User-Agent') || 'null';
         const upgradeHeader = request.headers.get('Upgrade');
@@ -191,6 +233,17 @@ export default {
                 } else if (访问路径 === 'sub') {//处理订阅请求
                     const 订阅TOKEN = await MD5MD5(host + userID);
                     if (url.searchParams.get('token') === 订阅TOKEN) {
+                        // 【新增】验证 UUID 白名单
+                        const 验证结果 = await 验证UUID(userID, env);
+                        if (!验证结果.valid) {
+                            return new Response(
+                                `订阅访问被拒绝\n原因: ${验证结果.reason}\n\n请联系管理员`,
+                                { status: 403, headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
+                            );
+                        }
+
+                        // 【新增】异步记录订阅访问
+                        ctx.waitUntil(记录订阅访问(env, request, userID));
                         config_JSON = await 读取config_JSON(env, host, userID, env.PATH);
                         ctx.waitUntil(请求日志记录(env, request, 访问IP, 'Get_SUB', config_JSON));
                         const ua = UA.toLowerCase();
@@ -334,8 +387,143 @@ export default {
                     const authCookie = cookies.split(';').find(c => c.trim().startsWith('auth='))?.split('=')[1];
                     if (authCookie && authCookie == await MD5MD5(UA + 加密秘钥 + 管理员密码)) return fetch(new Request('https://speed.cloudflare.com/locations', { headers: { 'Referer': 'https://speed.cloudflare.com/' } }));
                 } else if (访问路径 === 'robots.txt') return new Response('User-agent: *\nDisallow: /', { status: 200, headers: { 'Content-Type': 'text/plain; charset=UTF-8' } });
+                } else if (访问路径.startsWith('api/users')) {//用户管理API
+                    // API 认证
+                    const apiToken = request.headers.get('Authorization')?.replace('Bearer ', '');
+                    const validToken = await MD5MD5(env.API_SECRET || 管理员密码);
+
+                    if (apiToken !== validToken) {
+                        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+                            status: 401,
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    }
+
+                    if (!env.DB) {
+                        return new Response(JSON.stringify({ error: 'D1 not configured' }), {
+                            status: 500,
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    }
+
+                    // GET /api/users - 获取所有用户
+                    if (request.method === 'GET' && 访问路径 === 'api/users') {
+                        const users = await env.DB
+                            .prepare('SELECT uuid, enabled, expires_at, remark FROM users ORDER BY created_at DESC')
+                            .all();
+
+                        return new Response(JSON.stringify(users.results || []), {
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    }
+
+                    // GET /api/users/:uuid - 获取单个用户
+                    if (request.method === 'GET' && 访问路径.startsWith('api/users/')) {
+                        const uuid = 访问路径.replace('api/users/', '');
+                        const user = await env.DB
+                            .prepare('SELECT * FROM users WHERE uuid = ?')
+                            .bind(uuid)
+                            .first();
+
+                        if (!user) {
+                            return new Response(JSON.stringify({ error: 'User not found' }), {
+                                status: 404,
+                                headers: { 'Content-Type': 'application/json' }
+                            });
+                        }
+
+                        return new Response(JSON.stringify(user), {
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    }
+
+                    // POST /api/users - 创建/更新用户
+                    if (request.method === 'POST' && 访问路径 === 'api/users') {
+                        const userData = await request.json();
+                        const now = Date.now();
+
+                        await env.DB
+                            .prepare(`
+                                INSERT INTO users (uuid, enabled, expires_at, created_at, updated_at, remark)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                                ON CONFLICT(uuid) DO UPDATE SET
+                                    enabled = excluded.enabled,
+                                    expires_at = excluded.expires_at,
+                                    updated_at = excluded.updated_at,
+                                    remark = excluded.remark
+                            `)
+                            .bind(
+                                userData.uuid,
+                                userData.enabled ?? 1,
+                                userData.expires_at || null,
+                                now,
+                                now,
+                                userData.remark || ''
+                            )
+                            .run();
+
+                        // 清除缓存
+                        UUID验证缓存.delete(userData.uuid);
+
+                        return new Response(JSON.stringify({ success: true }), {
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    }
+
+                    // DELETE /api/users/:uuid - 删除用户
+                    if (request.method === 'DELETE' && 访问路径.startsWith('api/users/')) {
+                        const uuid = 访问路径.replace('api/users/', '');
+
+                        await env.DB
+                            .prepare('DELETE FROM users WHERE uuid = ?')
+                            .bind(uuid)
+                            .run();
+
+                        // 清除缓存
+                        UUID验证缓存.delete(uuid);
+
+                        return new Response(JSON.stringify({ success: true }), {
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    }
+
+                    // GET /api/users/:uuid/logs - 获取用户订阅记录
+                    if (request.method === 'GET' && 访问路径.match(/^api\/users\/.+\/logs$/)) {
+                        const uuid = 访问路径.replace('api/users/', '').replace('/logs', '');
+                        const limit = parseInt(url.searchParams.get('limit') || '100');
+                        const offset = parseInt(url.searchParams.get('offset') || '0');
+
+                        const logs = await env.DB
+                            .prepare(`
+                                SELECT * FROM subscription_logs
+                                WHERE uuid = ?
+                                ORDER BY timestamp DESC
+                                LIMIT ? OFFSET ?
+                            `)
+                            .bind(uuid, limit, offset)
+                            .all();
+
+                        return new Response(JSON.stringify(logs.results || []), {
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                    }
+
+                    return new Response(JSON.stringify({ error: 'API endpoint not found' }), {
+                        status: 404,
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                }
             } else if (!envUUID) return fetch(Pages静态页面 + '/noKV').then(r => { const headers = new Headers(r.headers); headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); headers.set('Pragma', 'no-cache'); headers.set('Expires', '0'); return new Response(r.body, { status: 404, statusText: r.statusText, headers }); });
         } else if (管理员密码) {// ws代理
+            // 【新增】验证 UUID 白名单（使用缓存）
+            const 验证结果 = await 验证UUID(userID, env);
+            if (!验证结果.valid) {
+                return new Response(
+                    `WebSocket 连接被拒绝: ${验证结果.reason}`,
+                    { status: 403, headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
+                );
+            }
+
             await 反代参数获取(request);
             return await 处理WS请求(request, userID);
         }
@@ -366,6 +554,75 @@ export default {
         return new Response(await nginx(), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' } });
     }
 };
+///////////////////////////////////////////////////////UUID验证函数///////////////////////////////////////////////
+/**
+ * 验证 UUID 是否有效（白名单 + 过期检查）
+ * @param {string} uuid - 用户 UUID
+ * @param {Object} env - 环境变量
+ * @returns {Promise<{valid: boolean, reason: string}>}
+ */
+async function 验证UUID(uuid, env) {
+	// 1. 检查缓存
+	const cached = 获取UUID缓存(uuid);
+	if (cached) {
+		console.log(`[UUID缓存] 命中: ${uuid} - ${cached.valid ? '有效' : '无效'}`);
+		return cached;
+	}
+
+	// 2. 环境变量兜底（向后兼容）
+	if (!env.DB) {
+		console.log('[UUID验证] D1 未配置，放行所有用户');
+		const result = { valid: true, reason: 'D1未启用' };
+		设置UUID缓存(uuid, true, 'D1未启用');
+		return result;
+	}
+
+	try {
+		// 3. 从 D1 查询用户
+		const user = await env.DB
+			.prepare('SELECT enabled, expires_at, remark FROM users WHERE uuid = ?')
+			.bind(uuid)
+			.first();
+
+		if (!user) {
+			console.log(`[UUID验证] 用户不存在: ${uuid}`);
+			const result = { valid: false, reason: 'UUID不在白名单中' };
+			设置UUID缓存(uuid, false, result.reason);
+			return result;
+		}
+
+		// 4. 检查是否启用
+		if (!user.enabled) {
+			console.log(`[UUID验证] 用户已禁用: ${uuid}`);
+			const result = { valid: false, reason: '用户已被禁用' };
+			设置UUID缓存(uuid, false, result.reason);
+			return result;
+		}
+
+		// 5. 检查是否过期
+		const now = Date.now();
+		if (user.expires_at && user.expires_at < now) {
+			console.log(`[UUID验证] 用户已过期: ${uuid} (${new Date(user.expires_at).toLocaleString()})`);
+			const result = { valid: false, reason: '用户已过期' };
+			设置UUID缓存(uuid, false, result.reason);
+			return result;
+		}
+
+		// 6. 验证通过
+		console.log(`[UUID验证] 验证通过: ${uuid} - ${user.remark || '无备注'}`);
+		const result = { valid: true, reason: 'OK' };
+		设置UUID缓存(uuid, true, 'OK');
+		return result;
+
+	} catch (error) {
+		console.error(`[UUID验证] D1 查询失败: ${error.message}`);
+		// D1 查询失败时放行（避免服务中断）
+		const result = { valid: true, reason: 'D1查询失败-放行' };
+		设置UUID缓存(uuid, true, 'D1查询失败');
+		return result;
+	}
+}
+
 ///////////////////////////////////////////////////////////////////////WS传输数据///////////////////////////////////////////////
 async function 处理WS请求(request, yourUUID) {
     const wssPair = new WebSocketPair();
@@ -2082,7 +2339,38 @@ async function html1101(host, 访问IP) {
     window._cf_translation = {};
     
     
-  </script> 
+  </script>
 </body>
 </html>`;
+}
+
+///////////////////////////////////////////////////////订阅记录函数///////////////////////////////////////////////
+/**
+ * 记录订阅访问（异步写入 D1）
+ * @param {Object} env - 环境变量
+ * @param {Request} request - 请求对象
+ * @param {string} uuid - 用户 UUID
+ */
+async function 记录订阅访问(env, request, uuid) {
+	if (!env.DB) return;
+
+	try {
+		await env.DB
+			.prepare(`
+				INSERT INTO subscription_logs (uuid, ip_address, country, user_agent, timestamp)
+				VALUES (?, ?, ?, ?, ?)
+			`)
+			.bind(
+				uuid,
+				request.headers.get('CF-Connecting-IP') || 'Unknown',
+				request.cf?.country || 'Unknown',
+				request.headers.get('User-Agent') || 'Unknown',
+				Date.now()
+			)
+			.run();
+
+		console.log(`[订阅记录] UUID: ${uuid}`);
+	} catch (error) {
+		console.error(`[订阅记录] 写入失败: ${error.message}`);
+	}
 }
