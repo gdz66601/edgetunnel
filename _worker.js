@@ -106,7 +106,7 @@ function getUserAdminHTML(host, users = [], message = '') {
             <td>${u.expire_date || '永不过期'}</td>
             <td>${u.created_at || '-'}</td>
             <td class="actions">
-                <button onclick="copySubscription('${u.uuid}')" class="btn btn-sm btn-copy">复制订阅</button>
+                <button onclick="copySubscription('${u.uuid}', '${u.subToken || ''}')" class="btn btn-sm btn-copy">复制订阅</button>
                 <button onclick="editUser('${u.uuid}', '${u.name || ''}', '${u.note || ''}', '${u.expire_date || ''}')" class="btn btn-sm btn-edit">编辑</button>
                 <button onclick="deleteUser('${u.uuid}')" class="btn btn-sm btn-delete">删除</button>
             </td>
@@ -428,8 +428,8 @@ function getUserAdminHTML(host, users = [], message = '') {
             }
         }
         
-        function copySubscription(uuid) {
-            const subLink = 'https://' + HOST + '/sub?uuid=' + uuid;
+        function copySubscription(uuid, token) {
+            const subLink = 'https://' + HOST + '/sub?uuid=' + uuid + '&token=' + token;
             document.getElementById('subLink').value = subLink;
             document.getElementById('subModal').classList.add('active');
         }
@@ -661,7 +661,12 @@ export default {
                 if (访问路径Lower === 'user-admin') {
                     try {
                         const result = await env.DB.prepare('SELECT * FROM users ORDER BY created_at DESC').all();
-                        return new Response(getUserAdminHTML(host, result.results || []), { headers: { 'Content-Type': 'text/html;charset=utf-8' } });
+                        // 为每个用户生成订阅token
+                        const usersWithToken = await Promise.all((result.results || []).map(async u => ({
+                            ...u,
+                            subToken: await MD5MD5(host + u.uuid)
+                        })));
+                        return new Response(getUserAdminHTML(host, usersWithToken), { headers: { 'Content-Type': 'text/html;charset=utf-8' } });
                     } catch (error) {
                         console.error('获取用户列表失败:', error);
                         return new Response(getUserAdminHTML(host, [], '获取用户列表失败: ' + error.message), { headers: { 'Content-Type': 'text/html;charset=utf-8' } });
