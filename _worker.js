@@ -9,7 +9,7 @@ const Pages静态页面 = 'https://edt-pages.github.io';
 async function initD1Database(env) {
     if (!env.DB) return false;
     try {
-        await env.DB.exec(`
+        await env.DB.prepare(`
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 uuid TEXT UNIQUE NOT NULL,
@@ -19,7 +19,7 @@ async function initD1Database(env) {
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
-        `);
+        `).run();
         return true;
     } catch (e) {
         console.error('D1 初始化失败:', e);
