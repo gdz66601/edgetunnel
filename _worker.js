@@ -2341,3 +2341,356 @@ async function 记录订阅访问(env, request, uuid) {
 		console.error(`[订阅记录] 写入失败: ${error.message}`);
 	}
 }
+
+///////////////////////////////////////////////////////用户管理面板HTML///////////////////////////////////////////////
+async function 用户管理登录页面() {
+	return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户管理系统 - 登录</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .login-container { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+        h1 { color: #333; margin-bottom: 10px; font-size: 24px; text-align: center; }
+        .subtitle { color: #666; text-align: center; margin-bottom: 30px; font-size: 14px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; color: #555; margin-bottom: 8px; font-size: 14px; font-weight: 500; }
+        input[type="password"] { width: 100%; padding: 12px 15px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; transition: border-color 0.3s; }
+        input[type="password"]:focus { outline: none; border-color: #667eea; }
+        button { width: 100%; padding: 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; transition: transform 0.2s; }
+        button:hover { transform: translateY(-2px); }
+        .error { color: #e74c3c; font-size: 14px; margin-top: 10px; text-align: center; display: none; }
+        .back-link { text-align: center; margin-top: 20px; }
+        .back-link a { color: #667eea; text-decoration: none; font-size: 14px; }
+        .back-link a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h1>🔐 用户管理系统</h1>
+        <p class="subtitle">EdgeTunnel User Management</p>
+        <form id="loginForm" method="POST">
+            <div class="form-group">
+                <label for="password">管理密码</label>
+                <input type="password" id="password" name="password" required placeholder="请输入 USER_ADMIN 密码" autofocus>
+            </div>
+            <button type="submit">登录</button>
+            <div class="error" id="error">密码错误，请重试</div>
+        </form>
+        <div class="back-link">
+            <a href="/admin">← 返回原管理面板</a>
+        </div>
+    </div>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const response = await fetch('/usermgmt/login', {
+                method: 'POST',
+                body: new URLSearchParams(formData)
+            });
+            const result = await response.json();
+            if (result.success) {
+                window.location.href = '/usermgmt';
+            } else {
+                document.getElementById('error').style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>`;
+}
+
+async function 用户管理面板页面(users) {
+	const userRows = users.map(user => {
+		const expiresDate = user.expires_at ? new Date(user.expires_at).toLocaleString('zh-CN') : '永久有效';
+		const statusBadge = user.enabled ? '<span class="badge badge-success">启用</span>' : '<span class="badge badge-disabled">禁用</span>';
+		const expiresStatus = user.expires_at && user.expires_at < Date.now() ? '<span class="badge badge-expired">已过期</span>' : '';
+		return `
+			<tr>
+				<td><code>${user.uuid}</code></td>
+				<td>${statusBadge} ${expiresStatus}</td>
+				<td>${expiresDate}</td>
+				<td>${user.remark || '-'}</td>
+				<td>
+					<button class="btn btn-sm btn-info" onclick="viewLogs('${user.uuid}')">📊 日志</button>
+					<button class="btn btn-sm btn-warning" onclick="editUser('${user.uuid}', ${user.enabled}, ${user.expires_at}, '${(user.remark || '').replace(/'/g, "\\'")}')">✏️ 编辑</button>
+					<button class="btn btn-sm btn-danger" onclick="deleteUser('${user.uuid}')">🗑️ 删除</button>
+				</td>
+			</tr>
+		`;
+	}).join('');
+
+	return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户管理系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 0; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 20px; }
+        .header-content { display: flex; justify-content: space-between; align-items: center; }
+        h1 { font-size: 24px; }
+        .logout-btn { background: rgba(255,255,255,0.2); color: white; border: none; padding: 8px 20px; border-radius: 5px; cursor: pointer; text-decoration: none; display: inline-block; }
+        .logout-btn:hover { background: rgba(255,255,255,0.3); }
+        .main { padding: 30px 0; }
+        .actions { margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .stats { display: flex; gap: 20px; }
+        .stat-card { background: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .stat-value { font-size: 28px; font-weight: bold; color: #667eea; }
+        .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
+        .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-primary:hover { background: #5568d3; }
+        .btn-sm { padding: 6px 12px; font-size: 13px; }
+        .btn-info { background: #3498db; color: white; }
+        .btn-warning { background: #f39c12; color: white; }
+        .btn-danger { background: #e74c3c; color: white; }
+        .table-container { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #f8f9fa; padding: 15px; text-align: left; font-weight: 600; color: #333; font-size: 14px; border-bottom: 2px solid #e9ecef; }
+        td { padding: 15px; border-bottom: 1px solid #f1f3f5; font-size: 14px; }
+        tr:hover { background: #f8f9fa; }
+        code { background: #f1f3f5; padding: 4px 8px; border-radius: 4px; font-size: 13px; color: #e83e8c; }
+        .badge { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .badge-success { background: #d4edda; color: #155724; }
+        .badge-disabled { background: #f8d7da; color: #721c24; }
+        .badge-expired { background: #fff3cd; color: #856404; margin-left: 5px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .modal-content { background: white; max-width: 500px; margin: 100px auto; padding: 30px; border-radius: 10px; }
+        .modal-header { margin-bottom: 20px; }
+        .modal-title { font-size: 20px; color: #333; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; color: #555; font-weight: 500; }
+        .form-group input[type="text"], .form-group input[type="number"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+        .form-group input[type="checkbox"] { margin-right: 8px; }
+        .checkbox-label { display: flex; align-items: center; }
+        .modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+        .empty-state { text-align: center; padding: 60px 20px; color: #999; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <div class="header-content">
+                <h1>👥 用户管理系统</h1>
+                <a href="/usermgmt/logout" class="logout-btn">退出登录</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="container">
+            <div class="actions">
+                <div class="stats">
+                    <div class="stat-card">
+                        <div class="stat-value">${users.length}</div>
+                        <div class="stat-label">总用户数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${users.filter(u => u.enabled).length}</div>
+                        <div class="stat-label">启用用户</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${users.filter(u => u.expires_at && u.expires_at < Date.now()).length}</div>
+                        <div class="stat-label">已过期</div>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="showAddModal()">+ 添加用户</button>
+            </div>
+
+            <div class="table-container">
+                ${users.length > 0 ? `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>UUID</th>
+                                <th>状态</th>
+                                <th>过期时间</th>
+                                <th>备注</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${userRows}
+                        </tbody>
+                    </table>
+                ` : '<div class="empty-state">暂无用户数据<br><small>点击上方"添加用户"按钮创建第一个用户</small></div>'}
+            </div>
+        </div>
+    </div>
+
+    <div id="userModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="modalTitle">添加用户</h2>
+            </div>
+            <form id="userForm" method="POST">
+                <input type="hidden" name="action" id="formAction" value="add">
+                <div class="form-group">
+                    <label>UUID <small>(标准 UUID 格式)</small></label>
+                    <input type="text" name="uuid" id="uuid" required pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" placeholder="例如: a1b2c3d4-1234-4567-89ab-123456789abc">
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="enabled" id="enabled" checked>
+                        启用用户
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>过期时间 <small>(毫秒时间戳，留空=永久有效)</small></label>
+                    <input type="number" name="expires_at" id="expires_at" placeholder="例如: 1735689600000">
+                    <small style="color: #999; display: block; margin-top: 5px;">
+                        提示: <a href="#" onclick="setExpires(30); return false;">30天后</a> |
+                        <a href="#" onclick="setExpires(365); return false;">1年后</a> |
+                        <a href="#" onclick="document.getElementById('expires_at').value=''; return false;">永久</a>
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label>备注</label>
+                    <input type="text" name="remark" id="remark" placeholder="例如: 张三 - VIP用户">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn" onclick="closeModal()">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function showAddModal() {
+            document.getElementById('modalTitle').textContent = '添加用户';
+            document.getElementById('formAction').value = 'add';
+            document.getElementById('userForm').reset();
+            document.getElementById('uuid').disabled = false;
+            document.getElementById('enabled').checked = true;
+            document.getElementById('userModal').style.display = 'block';
+        }
+
+        function editUser(uuid, enabled, expires_at, remark) {
+            document.getElementById('modalTitle').textContent = '编辑用户';
+            document.getElementById('formAction').value = 'edit';
+            document.getElementById('uuid').value = uuid;
+            document.getElementById('uuid').disabled = true;
+            document.getElementById('enabled').checked = enabled === 1;
+            document.getElementById('expires_at').value = expires_at || '';
+            document.getElementById('remark').value = remark;
+            document.getElementById('userModal').style.display = 'block';
+        }
+
+        function deleteUser(uuid) {
+            if (!confirm('确定要删除用户 ' + uuid + ' 吗？')) return;
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.innerHTML = '<input type="hidden" name="action" value="delete"><input type="hidden" name="uuid" value="' + uuid + '">';
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        function viewLogs(uuid) {
+            window.location.href = '/usermgmt/logs/' + uuid;
+        }
+
+        function closeModal() {
+            document.getElementById('userModal').style.display = 'none';
+        }
+
+        function setExpires(days) {
+            const timestamp = Date.now() + days * 24 * 60 * 60 * 1000;
+            document.getElementById('expires_at').value = timestamp;
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('userModal');
+            if (event.target === modal) closeModal();
+        }
+    </script>
+</body>
+</html>`;
+}
+
+async function 用户日志页面(uuid, logs) {
+	const logRows = logs.map(log => {
+		const date = new Date(log.timestamp).toLocaleString('zh-CN');
+		return `
+			<tr>
+				<td>${date}</td>
+				<td>${log.ip_address}</td>
+				<td>${log.country || '-'}</td>
+				<td>${log.user_agent || '-'}</td>
+			</tr>
+		`;
+	}).join('');
+
+	return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>订阅访问记录 - ${uuid}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 0; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 20px; }
+        .header-content { display: flex; justify-content: space-between; align-items: center; }
+        h1 { font-size: 24px; }
+        .back-btn { background: rgba(255,255,255,0.2); color: white; border: none; padding: 8px 20px; border-radius: 5px; cursor: pointer; text-decoration: none; display: inline-block; }
+        .back-btn:hover { background: rgba(255,255,255,0.3); }
+        .main { padding: 30px 0; }
+        .info-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        code { background: #f1f3f5; padding: 4px 8px; border-radius: 4px; font-size: 14px; color: #e83e8c; }
+        .table-container { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #f8f9fa; padding: 15px; text-align: left; font-weight: 600; color: #333; font-size: 14px; border-bottom: 2px solid #e9ecef; }
+        td { padding: 15px; border-bottom: 1px solid #f1f3f5; font-size: 14px; }
+        tr:hover { background: #f8f9fa; }
+        .empty-state { text-align: center; padding: 60px 20px; color: #999; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <div class="header-content">
+                <h1>📊 订阅访问记录</h1>
+                <a href="/usermgmt" class="back-btn">← 返回用户列表</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="container">
+            <div class="info-card">
+                <strong>用户 UUID:</strong> <code>${uuid}</code><br>
+                <strong>记录总数:</strong> ${logs.length} 条 <small>(最近 100 条)</small>
+            </div>
+
+            <div class="table-container">
+                ${logs.length > 0 ? `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>访问时间</th>
+                                <th>IP 地址</th>
+                                <th>国家</th>
+                                <th>User-Agent</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${logRows}
+                        </tbody>
+                    </table>
+                ` : '<div class="empty-state">暂无访问记录</div>'}
+            </div>
+        </div>
+    </div>
+</body>
+</html>`;
+}
