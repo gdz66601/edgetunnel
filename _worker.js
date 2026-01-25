@@ -3,6 +3,498 @@ let config_JSON, 反代IP = '', 启用SOCKS5反代 = null, 启用SOCKS5全局反
 let 缓存反代IP, 缓存反代解析数组, 缓存反代数组索引 = 0, 启用反代兜底 = true;
 let SOCKS5白名单 = ['*tapecontent.net', '*cloudatacdn.com', '*loadshare.org', '*cdn-centaurus.com', 'scholar.google.com'];
 const Pages静态页面 = 'https://edt-pages.github.io';
+
+///////////////////////////////////////////////////////D1用户管理系统///////////////////////////////////////////////
+// D1 数据库初始化 - 创建用户表
+async function initD1Database(env) {
+    if (!env.DB) return false;
+    try {
+        await env.DB.exec(`
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid TEXT UNIQUE NOT NULL,
+                name TEXT,
+                note TEXT,
+                expire_date TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        return true;
+    } catch (e) {
+        console.error('D1 初始化失败:', e);
+        return false;
+    }
+}
+
+// 验证用户UUID - 带5分钟缓存
+async function validateUserUUID(uuid, env, ctx) {
+    if (!env.DB) return { valid: true, reason: 'no_db' }; // 无D1时使用默认UUID验证
+
+    const cacheKey = new Request(`https://user-cache.internal/validate/${uuid.toLowerCase()}`);
+    const cache = caches.default;
+
+    // 检查缓存
+    try {
+        let cachedResponse = await cache.match(cacheKey);
+        if (cachedResponse) {
+            const data = await cachedResponse.json();
+            console.log(`[用户验证] UUID ${uuid} 缓存命中: ${data.valid}`);
+            return data;
+        }
+    } catch (e) {
+        console.error('缓存读取失败:', e);
+    }
+
+    // 查询D1数据库
+    try {
+        const result = await env.DB.prepare(
+            `SELECT * FROM users WHERE uuid = ? AND (expire_date IS NULL OR expire_date = '' OR expire_date >= date('now'))`
+        ).bind(uuid.toLowerCase()).first();
+
+        const isValid = !!result;
+        const responseData = {
+            valid: isValid,
+            reason: isValid ? 'ok' : 'not_found_or_expired',
+            user: isValid ? { name: result.name, expire_date: result.expire_date } : null
+        };
+
+        // 写入缓存5分钟
+        const response = new Response(JSON.stringify(responseData), {
+            headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'max-age=300'
+            }
+        });
+        if (ctx) ctx.waitUntil(cache.put(cacheKey, response.clone()));
+
+        console.log(`[用户验证] UUID ${uuid} 数据库查询: ${isValid}`);
+        return responseData;
+    } catch (e) {
+        console.error('用户验证失败:', e);
+        return { valid: false, reason: 'db_error' };
+    }
+}
+
+// 清除用户验证缓存
+async function clearUserCache(uuid) {
+    const cacheKey = new Request(`https://user-cache.internal/validate/${uuid.toLowerCase()}`);
+    const cache = caches.default;
+    try {
+        await cache.delete(cacheKey);
+    } catch (e) {
+        console.error('清除缓存失败:', e);
+    }
+}
+
+// 生成UUID
+function generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
+// 用户管理面板HTML
+function getUserAdminHTML(host, users = [], message = '') {
+    const userRows = users.map(u => `
+        <tr data-uuid="${u.uuid}">
+            <td><code class="uuid-code">${u.uuid}</code></td>
+            <td>${u.name || '-'}</td>
+            <td>${u.note || '-'}</td>
+            <td>${u.expire_date || '永不过期'}</td>
+            <td>${u.created_at || '-'}</td>
+            <td class="actions">
+                <button onclick="copySubscription('${u.uuid}')" class="btn btn-sm btn-copy">复制订阅</button>
+                <button onclick="editUser('${u.uuid}', '${u.name || ''}', '${u.note || ''}', '${u.expire_date || ''}')" class="btn btn-sm btn-edit">编辑</button>
+                <button onclick="deleteUser('${u.uuid}')" class="btn btn-sm btn-delete">删除</button>
+            </td>
+        </tr>
+    `).join('');
+
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户管理 - EdgeTunnel</title>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --danger: #ef4444;
+            --danger-hover: #dc2626;
+            --success: #22c55e;
+            --bg: #0f172a;
+            --card: #1e293b;
+            --border: #334155;
+            --text: #f1f5f9;
+            --text-muted: #94a3b8;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        h1 { font-size: 1.8rem; font-weight: 600; }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-danger:hover { background: var(--danger-hover); }
+        .btn-sm { padding: 6px 12px; font-size: 12px; }
+        .btn-copy { background: #0ea5e9; color: white; }
+        .btn-copy:hover { background: #0284c7; }
+        .btn-edit { background: #f59e0b; color: white; }
+        .btn-edit:hover { background: #d97706; }
+        .btn-delete { background: var(--danger); color: white; }
+        .btn-delete:hover { background: var(--danger-hover); }
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 1px solid var(--border);
+        }
+        .message {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .message.success { background: rgba(34, 197, 94, 0.2); color: #86efac; border: 1px solid #22c55e; }
+        .message.error { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid #ef4444; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 500; color: var(--text-muted); }
+        .form-group input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 14px;
+        }
+        .form-group input:focus { outline: none; border-color: var(--primary); }
+        .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { color: var(--text-muted); font-weight: 500; font-size: 13px; text-transform: uppercase; }
+        tr:hover { background: rgba(99, 102, 241, 0.1); }
+        .uuid-code { 
+            font-family: 'Consolas', monospace; 
+            font-size: 12px;
+            background: var(--bg);
+            padding: 4px 8px;
+            border-radius: 4px;
+            user-select: all;
+        }
+        .actions { white-space: nowrap; }
+        .actions button { margin-right: 6px; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 20px; }
+        .stat-card { background: var(--card); padding: 20px; border-radius: 12px; text-align: center; border: 1px solid var(--border); }
+        .stat-value { font-size: 2rem; font-weight: 700; color: var(--primary); }
+        .stat-label { color: var(--text-muted); font-size: 14px; margin-top: 4px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: var(--card); padding: 30px; border-radius: 16px; max-width: 500px; width: 90%; border: 1px solid var(--border); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-header h2 { font-size: 1.3rem; }
+        .modal-close { background: none; border: none; color: var(--text-muted); font-size: 24px; cursor: pointer; }
+        .modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px; }
+        .empty { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .empty-icon { font-size: 48px; margin-bottom: 16px; }
+        @media (max-width: 768px) {
+            table { display: block; overflow-x: auto; }
+            .header { flex-direction: column; align-items: stretch; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 用户管理</h1>
+            <div>
+                <button class="btn btn-primary" onclick="showAddModal()">+ 添加用户</button>
+                <button class="btn btn-danger" onclick="logout()" style="margin-left:10px">退出登录</button>
+            </div>
+        </div>
+        
+        ${message ? `<div class="message ${message.includes('成功') || message.includes('成功') ? 'success' : 'error'}">${message}</div>` : ''}
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value">${users.length}</div>
+                <div class="stat-label">用户总数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${users.filter(u => !u.expire_date || new Date(u.expire_date) >= new Date()).length}</div>
+                <div class="stat-label">有效用户</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${users.filter(u => u.expire_date && new Date(u.expire_date) < new Date()).length}</div>
+                <div class="stat-label">已过期</div>
+            </div>
+        </div>
+        
+        <div class="card">
+            ${users.length > 0 ? `
+            <table>
+                <thead>
+                    <tr>
+                        <th>UUID</th>
+                        <th>名称</th>
+                        <th>备注</th>
+                        <th>到期日期</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>${userRows}</tbody>
+            </table>
+            ` : `
+            <div class="empty">
+                <div class="empty-icon">👤</div>
+                <p>暂无用户，点击上方按钮添加</p>
+            </div>
+            `}
+        </div>
+    </div>
+    
+    <!-- 添加/编辑用户模态框 -->
+    <div class="modal" id="userModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">添加用户</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <form id="userForm">
+                <input type="hidden" id="editMode" value="add">
+                <input type="hidden" id="originalUUID" value="">
+                <div class="form-group">
+                    <label>UUID</label>
+                    <div style="display:flex;gap:10px">
+                        <input type="text" id="userUUID" placeholder="输入UUID或点击生成" required style="flex:1">
+                        <button type="button" class="btn btn-primary" onclick="generateNewUUID()">生成</button>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>名称（可选）</label>
+                        <input type="text" id="userName" placeholder="用户名称">
+                    </div>
+                    <div class="form-group">
+                        <label>到期日期（可选）</label>
+                        <input type="date" id="userExpire">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>备注（可选）</label>
+                    <input type="text" id="userNote" placeholder="备注信息">
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn" onclick="closeModal()" style="background:var(--border)">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- 订阅链接模态框 -->
+    <div class="modal" id="subModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>订阅链接</h2>
+                <button class="modal-close" onclick="closeSubModal()">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>通用订阅链接</label>
+                <input type="text" id="subLink" readonly onclick="this.select()">
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-primary" onclick="copySubLink()">复制链接</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const HOST = '${host}';
+        
+        function showAddModal() {
+            document.getElementById('modalTitle').textContent = '添加用户';
+            document.getElementById('editMode').value = 'add';
+            document.getElementById('originalUUID').value = '';
+            document.getElementById('userUUID').value = '';
+            document.getElementById('userName').value = '';
+            document.getElementById('userNote').value = '';
+            document.getElementById('userExpire').value = '';
+            document.getElementById('userUUID').removeAttribute('readonly');
+            document.getElementById('userModal').classList.add('active');
+        }
+        
+        function editUser(uuid, name, note, expire) {
+            document.getElementById('modalTitle').textContent = '编辑用户';
+            document.getElementById('editMode').value = 'edit';
+            document.getElementById('originalUUID').value = uuid;
+            document.getElementById('userUUID').value = uuid;
+            document.getElementById('userName').value = name;
+            document.getElementById('userNote').value = note;
+            document.getElementById('userExpire').value = expire;
+            document.getElementById('userUUID').setAttribute('readonly', true);
+            document.getElementById('userModal').classList.add('active');
+        }
+        
+        function closeModal() {
+            document.getElementById('userModal').classList.remove('active');
+        }
+        
+        function generateNewUUID() {
+            const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+            document.getElementById('userUUID').value = uuid;
+        }
+        
+        document.getElementById('userForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const mode = document.getElementById('editMode').value;
+            const uuid = document.getElementById('userUUID').value.trim().toLowerCase();
+            const name = document.getElementById('userName').value.trim();
+            const note = document.getElementById('userNote').value.trim();
+            const expire = document.getElementById('userExpire').value;
+            
+            if (!uuid) { alert('请输入UUID'); return; }
+            
+            const method = mode === 'add' ? 'POST' : 'PUT';
+            const body = { uuid, name, note, expire_date: expire };
+            if (mode === 'edit') body.original_uuid = document.getElementById('originalUUID').value;
+            
+            try {
+                const res = await fetch('/user-admin/api/users', {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(data.error || '操作失败');
+                }
+            } catch (err) {
+                alert('请求失败: ' + err.message);
+            }
+        });
+        
+        async function deleteUser(uuid) {
+            if (!confirm('确定要删除此用户吗？删除后该用户将无法连接。')) return;
+            try {
+                const res = await fetch('/user-admin/api/users', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ uuid })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(data.error || '删除失败');
+                }
+            } catch (err) {
+                alert('请求失败: ' + err.message);
+            }
+        }
+        
+        function copySubscription(uuid) {
+            const subLink = 'https://' + HOST + '/sub?uuid=' + uuid;
+            document.getElementById('subLink').value = subLink;
+            document.getElementById('subModal').classList.add('active');
+        }
+        
+        function closeSubModal() {
+            document.getElementById('subModal').classList.remove('active');
+        }
+        
+        function copySubLink() {
+            const input = document.getElementById('subLink');
+            input.select();
+            document.execCommand('copy');
+            alert('已复制到剪贴板');
+        }
+        
+        function logout() {
+            document.cookie = 'user_admin_auth=; Path=/; Max-Age=0';
+            location.href = '/user-admin';
+        }
+    </script>
+</body>
+</html>`;
+}
+
+// 用户管理登录页面HTML
+function getUserAdminLoginHTML(error = '') {
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户管理登录 - EdgeTunnel</title>
+    <style>
+        :root { --primary: #6366f1; --bg: #0f172a; --card: #1e293b; --border: #334155; --text: #f1f5f9; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .login-card { background: var(--card); padding: 40px; border-radius: 16px; width: 100%; max-width: 400px; border: 1px solid var(--border); }
+        h1 { text-align: center; margin-bottom: 30px; font-size: 1.5rem; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; }
+        .form-group input { width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 16px; }
+        .form-group input:focus { outline: none; border-color: var(--primary); }
+        .btn { width: 100%; padding: 14px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
+        .btn:hover { background: #4f46e5; }
+        .error { background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 12px; border-radius: 8px; margin-bottom: 20px; text-align: center; border: 1px solid #ef4444; }
+        .note { text-align: center; margin-top: 20px; color: #64748b; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <h1>🔐 用户管理</h1>
+        ${error ? `<div class="error">${error}</div>` : ''}
+        <form method="POST" action="/user-admin/login">
+            <div class="form-group">
+                <label>管理密码</label>
+                <input type="password" name="password" placeholder="请输入 USER_ADMIN 密码" required autofocus>
+            </div>
+            <button type="submit" class="btn">登录</button>
+        </form>
+        <p class="note">此面板独立于主管理面板</p>
+    </div>
+</body>
+</html>`;
+}
+
 ///////////////////////////////////////////////////////主程序入口///////////////////////////////////////////////
 export default {
     async fetch(request, env, ctx) {
@@ -27,6 +519,108 @@ export default {
         if (!upgradeHeader || upgradeHeader !== 'websocket') {
             if (url.protocol === 'http:') return Response.redirect(url.href.replace(`http://${url.hostname}`, `https://${url.hostname}`), 301);
             if (!管理员密码) return fetch(Pages静态页面 + '/noADMIN').then(r => { const headers = new Headers(r.headers); headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); headers.set('Pragma', 'no-cache'); headers.set('Expires', '0'); return new Response(r.body, { status: 404, statusText: r.statusText, headers }); });
+
+            // ===================== 用户管理面板路由 =====================
+            const 用户管理密码 = env.USER_ADMIN || env.user_admin;
+            const 访问路径Lower = url.pathname.slice(1).toLowerCase();
+
+            if (用户管理密码 && env.DB && (访问路径Lower === 'user-admin' || 访问路径Lower.startsWith('user-admin/'))) {
+                // 初始化D1数据库
+                await initD1Database(env);
+
+                const 用户管理加密秘钥 = 'user_admin_key_' + 用户管理密码;
+                const cookies = request.headers.get('Cookie') || '';
+                const userAdminCookie = cookies.split(';').find(c => c.trim().startsWith('user_admin_auth='))?.split('=')[1];
+                const validCookie = await MD5MD5(UA + 用户管理加密秘钥);
+
+                // 处理登录
+                if (访问路径Lower === 'user-admin/login') {
+                    if (request.method === 'POST') {
+                        const formData = await request.text();
+                        const params = new URLSearchParams(formData);
+                        const 输入密码 = params.get('password');
+                        if (输入密码 === 用户管理密码) {
+                            const 响应 = new Response('重定向中...', { status: 302, headers: { 'Location': '/user-admin' } });
+                            响应.headers.set('Set-Cookie', `user_admin_auth=${validCookie}; Path=/; Max-Age=86400; HttpOnly`);
+                            return 响应;
+                        }
+                        return new Response(getUserAdminLoginHTML('密码错误'), { status: 200, headers: { 'Content-Type': 'text/html;charset=utf-8' } });
+                    }
+                    return new Response(getUserAdminLoginHTML(), { status: 200, headers: { 'Content-Type': 'text/html;charset=utf-8' } });
+                }
+
+                // 验证登录状态
+                if (!userAdminCookie || userAdminCookie !== validCookie) {
+                    return new Response(getUserAdminLoginHTML(), { status: 200, headers: { 'Content-Type': 'text/html;charset=utf-8' } });
+                }
+
+                // 用户API处理
+                if (访问路径Lower === 'user-admin/api/users') {
+                    try {
+                        if (request.method === 'GET') {
+                            // 获取用户列表
+                            const result = await env.DB.prepare('SELECT * FROM users ORDER BY created_at DESC').all();
+                            return new Response(JSON.stringify({ success: true, users: result.results }), { headers: { 'Content-Type': 'application/json' } });
+                        } else if (request.method === 'POST') {
+                            // 添加用户
+                            const body = await request.json();
+                            const uuid = (body.uuid || generateUUID()).toLowerCase();
+                            const name = body.name || null;
+                            const note = body.note || null;
+                            const expire_date = body.expire_date || null;
+
+                            await env.DB.prepare(
+                                'INSERT INTO users (uuid, name, note, expire_date) VALUES (?, ?, ?, ?)'
+                            ).bind(uuid, name, note, expire_date).run();
+
+                            return new Response(JSON.stringify({ success: true, uuid }), { headers: { 'Content-Type': 'application/json' } });
+                        } else if (request.method === 'PUT') {
+                            // 更新用户
+                            const body = await request.json();
+                            const uuid = body.original_uuid || body.uuid;
+                            const name = body.name || null;
+                            const note = body.note || null;
+                            const expire_date = body.expire_date || null;
+
+                            await env.DB.prepare(
+                                'UPDATE users SET name = ?, note = ?, expire_date = ?, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?'
+                            ).bind(name, note, expire_date, uuid.toLowerCase()).run();
+
+                            // 清除该用户的缓存
+                            await clearUserCache(uuid);
+
+                            return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+                        } else if (request.method === 'DELETE') {
+                            // 删除用户
+                            const body = await request.json();
+                            const uuid = body.uuid;
+
+                            await env.DB.prepare('DELETE FROM users WHERE uuid = ?').bind(uuid.toLowerCase()).run();
+
+                            // 清除该用户的缓存
+                            await clearUserCache(uuid);
+
+                            return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+                        }
+                    } catch (error) {
+                        console.error('用户API错误:', error);
+                        return new Response(JSON.stringify({ success: false, error: error.message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+                    }
+                }
+
+                // 显示用户管理面板
+                if (访问路径Lower === 'user-admin') {
+                    try {
+                        const result = await env.DB.prepare('SELECT * FROM users ORDER BY created_at DESC').all();
+                        return new Response(getUserAdminHTML(host, result.results || []), { headers: { 'Content-Type': 'text/html;charset=utf-8' } });
+                    } catch (error) {
+                        console.error('获取用户列表失败:', error);
+                        return new Response(getUserAdminHTML(host, [], '获取用户列表失败: ' + error.message), { headers: { 'Content-Type': 'text/html;charset=utf-8' } });
+                    }
+                }
+            }
+            // ===================== 用户管理面板路由结束 =====================
+
             if (env.KV && typeof env.KV.get === 'function') {
                 const 访问路径 = url.pathname.slice(1).toLowerCase();
                 const 区分大小写访问路径 = url.pathname.slice(1);
@@ -337,6 +931,43 @@ export default {
             } else if (!envUUID) return fetch(Pages静态页面 + '/noKV').then(r => { const headers = new Headers(r.headers); headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); headers.set('Pragma', 'no-cache'); headers.set('Expires', '0'); return new Response(r.body, { status: 404, statusText: r.statusText, headers }); });
         } else if (管理员密码) {// ws代理
             await 反代参数获取(request);
+
+            // D1用户验证 - 如果启用了D1数据库
+            if (env.DB && env.USER_ADMIN) {
+                // 从路径或协议中提取UUID进行验证
+                const earlyData = request.headers.get('sec-websocket-protocol') || '';
+                let 请求UUID = userID; // 默认使用环境变量UUID
+
+                // 尝试从earlyData解析真实UUID
+                try {
+                    if (earlyData) {
+                        const decoded = atob(earlyData.replace(/-/g, '+').replace(/_/g, '/'));
+                        const bytes = new Uint8Array(decoded.length);
+                        for (let i = 0; i < decoded.length; i++) bytes[i] = decoded.charCodeAt(i);
+                        if (bytes.length >= 17) {
+                            const uuidBytes = bytes.slice(1, 17);
+                            const hex = [...uuidBytes].map(b => b.toString(16).padStart(2, '0')).join('');
+                            请求UUID = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+                        }
+                    }
+                } catch (e) {
+                    console.log('[D1验证] 解析UUID失败，使用默认UUID');
+                }
+
+                // 验证用户
+                const validation = await validateUserUUID(请求UUID, env, ctx);
+                if (!validation.valid && validation.reason !== 'no_db') {
+                    console.log(`[D1验证] 用户 ${请求UUID} 验证失败: ${validation.reason}`);
+                    // 返回一个关闭的WebSocket连接
+                    const wssPair = new WebSocketPair();
+                    const [client, server] = Object.values(wssPair);
+                    server.accept();
+                    server.close(1008, 'User not found or expired');
+                    return new Response(null, { status: 101, webSocket: client });
+                }
+                console.log(`[D1验证] 用户 ${请求UUID} 验证通过`);
+            }
+
             return await 处理WS请求(request, userID);
         }
 
