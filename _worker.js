@@ -387,63 +387,59 @@ export default {
                     const authCookie = cookies.split(';').find(c => c.trim().startsWith('auth='))?.split('=')[1];
                     if (authCookie && authCookie == await MD5MD5(UA + 加密秘钥 + 管理员密码)) return fetch(new Request('https://speed.cloudflare.com/locations', { headers: { 'Referer': 'https://speed.cloudflare.com/' } }));
                 } else if (访问路径 === 'robots.txt') return new Response('User-agent: *\nDisallow: /', { status: 200, headers: { 'Content-Type': 'text/plain; charset=UTF-8' } });
-                } else if (访问路径.startsWith('api/users')) {//用户管理API
-                    // API 认证
-                    const apiToken = request.headers.get('Authorization')?.replace('Bearer ', '');
-                    const validToken = await MD5MD5(env.API_SECRET || 管理员密码);
+                } else if (访问路径 === 'usermgmt/login') {//用户管理面板登录
+                    const 用户管理密码 = env.USER_ADMIN || env.USERADMIN;
+                    if (!用户管理密码) return new Response('未配置用户管理密码，请设置 USER_ADMIN 环境变量', { status: 500 });
 
-                    if (apiToken !== validToken) {
-                        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-                            status: 401,
-                            headers: { 'Content-Type': 'application/json' }
-                        });
+                    if (request.method === 'POST') {
+                        const formData = await request.text();
+                        const params = new URLSearchParams(formData);
+                        const 输入密码 = params.get('password');
+
+                        if (输入密码 === 用户管理密码) {
+                            const 响应 = new Response(JSON.stringify({ success: true }), { status: 200 });
+                            响应.headers.set('Set-Cookie', `usermgmt_auth=${await MD5MD5(UA + 加密秘钥 + 用户管理密码)}; Path=/; Max-Age=86400; HttpOnly`);
+                            return 响应;
+                        }
+                        return new Response(JSON.stringify({ success: false }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+                    }
+
+                    return new Response(await 用户管理登录页面(), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' } });
+
+                } else if (访问路径 === 'usermgmt/logout') {//用户管理面板登出
+                    const 响应 = new Response('重定向中...', { status: 302, headers: { 'Location': '/usermgmt/login' } });
+                    响应.headers.set('Set-Cookie', 'usermgmt_auth=; Path=/; Max-Age=0; HttpOnly');
+                    return 响应;
+
+                } else if (访问路径.startsWith('usermgmt')) {//用户管理面板
+                    const 用户管理密码 = env.USER_ADMIN || env.USERADMIN;
+                    if (!用户管理密码) return new Response('未配置用户管理密码，请设置 USER_ADMIN 环境变量', { status: 500 });
+
+                    const cookies = request.headers.get('Cookie') || '';
+                    const authCookie = cookies.split(';').find(c => c.trim().startsWith('usermgmt_auth='))?.split('=')[1];
+
+                    if (!authCookie || authCookie !== await MD5MD5(UA + 加密秘钥 + 用户管理密码)) {
+                        return new Response('重定向中...', { status: 302, headers: { 'Location': '/usermgmt/login' } });
                     }
 
                     if (!env.DB) {
-                        return new Response(JSON.stringify({ error: 'D1 not configured' }), {
-                            status: 500,
-                            headers: { 'Content-Type': 'application/json' }
-                        });
+                        return new Response('D1 数据库未配置，请检查 wrangler.toml', { status: 500 });
                     }
 
-                    // GET /api/users - 获取所有用户
-                    if (request.method === 'GET' && 访问路径 === 'api/users') {
-                        const users = await env.DB
-                            .prepare('SELECT uuid, enabled, expires_at, remark FROM users ORDER BY created_at DESC')
-                            .all();
+                    // POST 请求处理（CRUD 操作）
+                    if (request.method === 'POST') {
+                        const formData = await request.text();
+                        const params = new URLSearchParams(formData);
+                        const action = params.get('action');
 
-                        return new Response(JSON.stringify(users.results || []), {
-                            headers: { 'Content-Type': 'application/json' }
-                        });
-                    }
+                        if (action === 'add' || action === 'edit') {
+                            const uuid = params.get('uuid');
+                            const enabled = params.get('enabled') === 'on' ? 1 : 0;
+                            const expires_at = params.get('expires_at') ? parseInt(params.get('expires_at')) : null;
+                            const remark = params.get('remark') || '';
+                            const now = Date.now();
 
-                    // GET /api/users/:uuid - 获取单个用户
-                    if (request.method === 'GET' && 访问路径.startsWith('api/users/')) {
-                        const uuid = 访问路径.replace('api/users/', '');
-                        const user = await env.DB
-                            .prepare('SELECT * FROM users WHERE uuid = ?')
-                            .bind(uuid)
-                            .first();
-
-                        if (!user) {
-                            return new Response(JSON.stringify({ error: 'User not found' }), {
-                                status: 404,
-                                headers: { 'Content-Type': 'application/json' }
-                            });
-                        }
-
-                        return new Response(JSON.stringify(user), {
-                            headers: { 'Content-Type': 'application/json' }
-                        });
-                    }
-
-                    // POST /api/users - 创建/更新用户
-                    if (request.method === 'POST' && 访问路径 === 'api/users') {
-                        const userData = await request.json();
-                        const now = Date.now();
-
-                        await env.DB
-                            .prepare(`
+                            await env.DB.prepare(`
                                 INSERT INTO users (uuid, enabled, expires_at, created_at, updated_at, remark)
                                 VALUES (?, ?, ?, ?, ?, ?)
                                 ON CONFLICT(uuid) DO UPDATE SET
@@ -451,67 +447,38 @@ export default {
                                     expires_at = excluded.expires_at,
                                     updated_at = excluded.updated_at,
                                     remark = excluded.remark
-                            `)
-                            .bind(
-                                userData.uuid,
-                                userData.enabled ?? 1,
-                                userData.expires_at || null,
-                                now,
-                                now,
-                                userData.remark || ''
-                            )
-                            .run();
+                            `).bind(uuid, enabled, expires_at, now, now, remark).run();
 
-                        // 清除缓存
-                        UUID验证缓存.delete(userData.uuid);
+                            UUID验证缓存.delete(uuid);
+                            return new Response('重定向中...', { status: 302, headers: { 'Location': '/usermgmt' } });
 
-                        return new Response(JSON.stringify({ success: true }), {
-                            headers: { 'Content-Type': 'application/json' }
+                        } else if (action === 'delete') {
+                            const uuid = params.get('uuid');
+                            await env.DB.prepare('DELETE FROM users WHERE uuid = ?').bind(uuid).run();
+                            UUID验证缓存.delete(uuid);
+                            return new Response('重定向中...', { status: 302, headers: { 'Location': '/usermgmt' } });
+                        }
+                    }
+
+                    // GET 请求 - 显示用户列表
+                    if (访问路径 === 'usermgmt' || 访问路径 === 'usermgmt/') {
+                        const users = await env.DB.prepare('SELECT * FROM users ORDER BY created_at DESC').all();
+                        return new Response(await 用户管理面板页面(users.results || []), {
+                            status: 200,
+                            headers: { 'Content-Type': 'text/html; charset=UTF-8' }
                         });
                     }
 
-                    // DELETE /api/users/:uuid - 删除用户
-                    if (request.method === 'DELETE' && 访问路径.startsWith('api/users/')) {
-                        const uuid = 访问路径.replace('api/users/', '');
-
-                        await env.DB
-                            .prepare('DELETE FROM users WHERE uuid = ?')
-                            .bind(uuid)
-                            .run();
-
-                        // 清除缓存
-                        UUID验证缓存.delete(uuid);
-
-                        return new Response(JSON.stringify({ success: true }), {
-                            headers: { 'Content-Type': 'application/json' }
+                    // GET /usermgmt/logs/:uuid - 查看用户订阅记录
+                    if (访问路径.startsWith('usermgmt/logs/')) {
+                        const uuid = 访问路径.replace('usermgmt/logs/', '');
+                        const logs = await env.DB.prepare('SELECT * FROM subscription_logs WHERE uuid = ? ORDER BY timestamp DESC LIMIT 100')
+                            .bind(uuid).all();
+                        return new Response(await 用户日志页面(uuid, logs.results || []), {
+                            status: 200,
+                            headers: { 'Content-Type': 'text/html; charset=UTF-8' }
                         });
                     }
-
-                    // GET /api/users/:uuid/logs - 获取用户订阅记录
-                    if (request.method === 'GET' && 访问路径.match(/^api\/users\/.+\/logs$/)) {
-                        const uuid = 访问路径.replace('api/users/', '').replace('/logs', '');
-                        const limit = parseInt(url.searchParams.get('limit') || '100');
-                        const offset = parseInt(url.searchParams.get('offset') || '0');
-
-                        const logs = await env.DB
-                            .prepare(`
-                                SELECT * FROM subscription_logs
-                                WHERE uuid = ?
-                                ORDER BY timestamp DESC
-                                LIMIT ? OFFSET ?
-                            `)
-                            .bind(uuid, limit, offset)
-                            .all();
-
-                        return new Response(JSON.stringify(logs.results || []), {
-                            headers: { 'Content-Type': 'application/json' }
-                        });
-                    }
-
-                    return new Response(JSON.stringify({ error: 'API endpoint not found' }), {
-                        status: 404,
-                        headers: { 'Content-Type': 'application/json' }
-                    });
                 }
             } else if (!envUUID) return fetch(Pages静态页面 + '/noKV').then(r => { const headers = new Headers(r.headers); headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); headers.set('Pragma', 'no-cache'); headers.set('Expires', '0'); return new Response(r.body, { status: 404, statusText: r.statusText, headers }); });
         } else if (管理员密码) {// ws代理
