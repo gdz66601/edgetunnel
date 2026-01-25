@@ -832,9 +832,29 @@ export default {
                     响应.headers.set('Set-Cookie', 'auth=; Path=/; Max-Age=0; HttpOnly');
                     return 响应;
                 } else if (访问路径 === 'sub') {//处理订阅请求
-                    const 订阅TOKEN = await MD5MD5(host + userID);
-                    if (url.searchParams.get('token') === 订阅TOKEN) {
-                        config_JSON = await 读取config_JSON(env, host, userID, env.PATH);
+                    const 原订阅TOKEN = await MD5MD5(host + userID);
+                    const 请求UUID = url.searchParams.get('uuid');
+                    let 有效订阅UUID = null;
+
+                    // 方式1：原版 token 验证
+                    if (url.searchParams.get('token') === 原订阅TOKEN) {
+                        有效订阅UUID = userID;
+                    }
+                    // 方式2：D1 用户 uuid 参数验证
+                    else if (请求UUID && env.DB && env.USER_ADMIN) {
+                        const D1用户TOKEN = await MD5MD5(host + 请求UUID.toLowerCase());
+                        if (url.searchParams.get('token') === D1用户TOKEN) {
+                            // 验证用户是否有效
+                            const validation = await validateUserUUID(请求UUID, env, ctx);
+                            if (validation.valid) {
+                                有效订阅UUID = 请求UUID.toLowerCase();
+                            }
+                        }
+                    }
+
+                    if (有效订阅UUID) {
+                        config_JSON = await 读取config_JSON(env, host, 有效订阅UUID, env.PATH);
+                        config_JSON.UUID = 有效订阅UUID; // 确保使用正确的UUID
                         ctx.waitUntil(请求日志记录(env, request, 访问IP, 'Get_SUB', config_JSON));
                         const ua = UA.toLowerCase();
                         const expire = 4102329600;//2099-12-31 到期时间
