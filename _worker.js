@@ -446,7 +446,7 @@ function getUserAdminHTML(host, users = [], message = '') {
         }
         
         function logout() {
-            document.cookie = 'user_admin_auth=; Path=/; Max-Age=0';
+            document.cookie = 'user_admin_auth=; Path=/; Max-Age=0; SameSite=Lax';
             location.href = '/user-admin';
         }
     </script>
@@ -589,7 +589,7 @@ export default {
                         const 输入密码 = params.get('password');
                         if (输入密码 === 用户管理密码) {
                             const 响应 = new Response('重定向中...', { status: 302, headers: { 'Location': '/user-admin' } });
-                            响应.headers.set('Set-Cookie', `user_admin_auth=${validCookie}; Path=/; Max-Age=86400; HttpOnly`);
+                            响应.headers.set('Set-Cookie', `user_admin_auth=${validCookie}; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax`);
                             return 响应;
                         }
                         return new Response(getUserAdminLoginHTML('密码错误'), { status: 200, headers: { 'Content-Type': 'text/html;charset=utf-8' } });
