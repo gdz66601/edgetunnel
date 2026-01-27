@@ -118,7 +118,7 @@ function getUserAdminHTML(host, users = [], message = '') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>用户管理 - EdgeTunnel</title>
+    <title>用户管理</title>
     <style>
         :root {
             --primary: #6366f1;
@@ -461,7 +461,7 @@ function getUserAdminLoginHTML(error = '') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>用户管理登录 - EdgeTunnel</title>
+    <title>用户管理登录</title>
     <style>
         :root { --primary: #6366f1; --bg: #0f172a; --card: #1e293b; --border: #334155; --text: #f1f5f9; }
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -475,7 +475,6 @@ function getUserAdminLoginHTML(error = '') {
         .btn { width: 100%; padding: 14px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
         .btn:hover { background: #4f46e5; }
         .error { background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 12px; border-radius: 8px; margin-bottom: 20px; text-align: center; border: 1px solid #ef4444; }
-        .note { text-align: center; margin-top: 20px; color: #64748b; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -489,7 +488,7 @@ function getUserAdminLoginHTML(error = '') {
             </div>
             <button type="submit" class="btn">登录</button>
         </form>
-        <p class="note">此面板独立于主管理面板</p>
+
     </div>
 </body>
 </html>`;
