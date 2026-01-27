@@ -1005,43 +1005,41 @@ export default {
         } else if (管理员密码) {// ws代理
             await 反代参数获取(request);
 
-            // D1用户验证 - 如果启用了D1数据库
-            if (env.DB && env.USER_ADMIN) {
-                // 从路径或协议中提取UUID进行验证
-                const earlyData = request.headers.get('sec-websocket-protocol') || '';
-                let 请求UUID = userID; // 默认使用环境变量UUID
+            // 从协议中提取实际使用的UUID
+            const earlyData = request.headers.get('sec-websocket-protocol') || '';
+            let 实际UUID = userID; // 默认使用环境变量UUID
 
-                // 尝试从earlyData解析真实UUID
-                try {
-                    if (earlyData) {
-                        const decoded = atob(earlyData.replace(/-/g, '+').replace(/_/g, '/'));
-                        const bytes = new Uint8Array(decoded.length);
-                        for (let i = 0; i < decoded.length; i++) bytes[i] = decoded.charCodeAt(i);
-                        if (bytes.length >= 17) {
-                            const uuidBytes = bytes.slice(1, 17);
-                            const hex = [...uuidBytes].map(b => b.toString(16).padStart(2, '0')).join('');
-                            请求UUID = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-                        }
+            // 尝试从earlyData解析真实UUID
+            try {
+                if (earlyData) {
+                    const decoded = atob(earlyData.replace(/-/g, '+').replace(/_/g, '/'));
+                    const bytes = new Uint8Array(decoded.length);
+                    for (let i = 0; i < decoded.length; i++) bytes[i] = decoded.charCodeAt(i);
+                    if (bytes.length >= 17) {
+                        const uuidBytes = bytes.slice(1, 17);
+                        const hex = [...uuidBytes].map(b => b.toString(16).padStart(2, '0')).join('');
+                        实际UUID = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
                     }
-                } catch (e) {
-                    console.log('[D1验证] 解析UUID失败，使用默认UUID');
                 }
+            } catch (e) {
+                console.log('[UUID解析] 解析失败，使用默认UUID');
+            }
 
-                // 验证用户
-                const validation = await validateUserUUID(请求UUID, env, ctx);
+            // D1用户验证 - 如果启用了D1数据库且不是管理员UUID
+            if (env.DB && env.USER_ADMIN && 实际UUID.toLowerCase() !== userID.toLowerCase()) {
+                const validation = await validateUserUUID(实际UUID, env, ctx);
                 if (!validation.valid && validation.reason !== 'no_db') {
-                    console.log(`[D1验证] 用户 ${请求UUID} 验证失败: ${validation.reason}`);
-                    // 返回一个关闭的WebSocket连接
+                    console.log(`[D1验证] 用户 ${实际UUID} 验证失败: ${validation.reason}`);
                     const wssPair = new WebSocketPair();
                     const [client, server] = Object.values(wssPair);
                     server.accept();
                     server.close(1008, 'User not found or expired');
                     return new Response(null, { status: 101, webSocket: client });
                 }
-                console.log(`[D1验证] 用户 ${请求UUID} 验证通过`);
+                console.log(`[D1验证] 用户 ${实际UUID} 验证通过`);
             }
 
-            return await 处理WS请求(request, userID);
+            return await 处理WS请求(request, 实际UUID);
         }
 
         let 伪装页URL = env.URL || 'nginx';
