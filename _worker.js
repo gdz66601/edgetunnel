@@ -544,6 +544,7 @@ export default {
         const url = new URL(request.url);
         const UA = request.headers.get('User-Agent') || 'null';
         const upgradeHeader = request.headers.get('Upgrade');
+        console.log('[Fetch入口] 请求路径:', url.pathname, '| Upgrade:', upgradeHeader);
         const 管理员密码 = env.ADMIN || env.admin || env.PASSWORD || env.password || env.pswd || env.TOKEN || env.KEY || env.UUID || env.uuid;
         const 加密秘钥 = env.KEY || '勿动此默认密钥，有需求请自行通过添加变量KEY进行修改';
         const userIDMD5 = await MD5MD5(管理员密码 + 加密秘钥);
@@ -1002,7 +1003,10 @@ export default {
                 } else if (访问路径 === 'robots.txt') return new Response('User-agent: *\nDisallow: /', { status: 200, headers: { 'Content-Type': 'text/plain; charset=UTF-8' } });
             } else if (!envUUID) return fetch(Pages静态页面 + '/noKV').then(r => { const headers = new Headers(r.headers); headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); headers.set('Pragma', 'no-cache'); headers.set('Expires', '0'); return new Response(r.body, { status: 404, statusText: r.statusText, headers }); });
         } else if (管理员密码) {// ws代理
+            console.log('[WS入口] 收到WebSocket升级请求');
+            console.log('[WS入口] userID:', userID);
             await 反代参数获取(request);
+            console.log('[WS入口] 反代参数获取完成');
             return await 处理WS请求(request, userID);
         }
 
@@ -1034,57 +1038,78 @@ export default {
 };
 ///////////////////////////////////////////////////////////////////////WS传输数据///////////////////////////////////////////////
 async function 处理WS请求(request, yourUUID) {
+    console.log('[WS处理] 开始处理WS请求, UUID:', yourUUID);
     const wssPair = new WebSocketPair();
     const [clientSock, serverSock] = Object.values(wssPair);
     serverSock.accept();
     let remoteConnWrapper = { socket: null };
     let isDnsQuery = false;
     const earlyData = request.headers.get('sec-websocket-protocol') || '';
+    console.log('[WS处理] earlyData长度:', earlyData.length);
     const readable = makeReadableStr(serverSock, earlyData);
     let 判断是否是木马 = null;
     readable.pipeTo(new WritableStream({
         async write(chunk) {
-            if (isDnsQuery) return await forwardataudp(chunk, serverSock, null);
-            if (remoteConnWrapper.socket) {
-                const writer = remoteConnWrapper.socket.writable.getWriter();
-                await writer.write(chunk);
-                writer.releaseLock();
-                return;
-            }
-
-            if (判断是否是木马 === null) {
-                const bytes = new Uint8Array(chunk);
-                判断是否是木马 = bytes.byteLength >= 58 && bytes[56] === 0x0d && bytes[57] === 0x0a;
-            }
-
-            if (remoteConnWrapper.socket) {
-                const writer = remoteConnWrapper.socket.writable.getWriter();
-                await writer.write(chunk);
-                writer.releaseLock();
-                return;
-            }
-
-            if (判断是否是木马) {
-                const { port, hostname, rawClientData } = 解析木马请求(chunk, yourUUID);
-                if (isSpeedTestSite(hostname)) throw new Error('Speedtest site is blocked');
-                await forwardataTCP(hostname, port, rawClientData, serverSock, null, remoteConnWrapper, yourUUID);
-            } else {
-                const { port, hostname, rawIndex, version, isUDP } = 解析魏烈思请求(chunk, yourUUID);
-                if (isSpeedTestSite(hostname)) throw new Error('Speedtest site is blocked');
-                if (isUDP) {
-                    if (port === 53) isDnsQuery = true;
-                    else throw new Error('UDP is not supported');
+            try {
+                if (isDnsQuery) return await forwardataudp(chunk, serverSock, null);
+                if (remoteConnWrapper.socket) {
+                    const writer = remoteConnWrapper.socket.writable.getWriter();
+                    await writer.write(chunk);
+                    writer.releaseLock();
+                    return;
                 }
-                const respHeader = new Uint8Array([version[0], 0]);
-                const rawData = chunk.slice(rawIndex);
-                if (isDnsQuery) return forwardataudp(rawData, serverSock, respHeader);
-                await forwardataTCP(hostname, port, rawData, serverSock, respHeader, remoteConnWrapper, yourUUID);
+
+                if (判断是否是木马 === null) {
+                    const bytes = new Uint8Array(chunk);
+                    判断是否是木马 = bytes.byteLength >= 58 && bytes[56] === 0x0d && bytes[57] === 0x0a;
+                    console.log('[WS处理] 协议类型检测:', 判断是否是木马 ? 'Trojan' : 'VLESS');
+                }
+
+                if (remoteConnWrapper.socket) {
+                    const writer = remoteConnWrapper.socket.writable.getWriter();
+                    await writer.write(chunk);
+                    writer.releaseLock();
+                    return;
+                }
+
+                if (判断是否是木马) {
+                    const result = 解析木马请求(chunk, yourUUID);
+                    if (result.hasError) {
+                        console.error('[WS处理] Trojan解析失败:', result.message);
+                        throw new Error(result.message);
+                    }
+                    const { port, hostname, rawClientData } = result;
+                    console.log('[WS处理] Trojan连接目标:', hostname, port);
+                    if (isSpeedTestSite(hostname)) throw new Error('Speedtest site is blocked');
+                    await forwardataTCP(hostname, port, rawClientData, serverSock, null, remoteConnWrapper, yourUUID);
+                } else {
+                    const result = 解析魏烈思请求(chunk, yourUUID);
+                    if (result.hasError) {
+                        console.error('[WS处理] VLESS解析失败:', result.message);
+                        throw new Error(result.message);
+                    }
+                    const { port, hostname, rawIndex, version, isUDP } = result;
+                    console.log('[WS处理] VLESS连接目标:', hostname, port);
+                    if (isSpeedTestSite(hostname)) throw new Error('Speedtest site is blocked');
+                    if (isUDP) {
+                        if (port === 53) isDnsQuery = true;
+                        else throw new Error('UDP is not supported');
+                    }
+                    const respHeader = new Uint8Array([version[0], 0]);
+                    const rawData = chunk.slice(rawIndex);
+                    if (isDnsQuery) return forwardataudp(rawData, serverSock, respHeader);
+                    await forwardataTCP(hostname, port, rawData, serverSock, respHeader, remoteConnWrapper, yourUUID);
+                }
+            } catch (err) {
+                console.error('[WS处理] 处理错误:', err.message);
+                throw err;
             }
         },
     })).catch((err) => {
-        // console.error('Readable pipe error:', err);
+        console.error('[WS处理] Readable pipe error:', err.message);
     });
 
+    console.log('[WS处理] 返回101响应');
     return new Response(null, { status: 101, webSocket: clientSock });
 }
 
