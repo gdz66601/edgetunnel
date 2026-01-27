@@ -844,21 +844,20 @@ export default {
                     if (url.searchParams.get('token') === 原订阅TOKEN) {
                         有效订阅UUID = userID;
                     }
-                    // 方式2：D1 用户 uuid 参数验证
+                    // 方式2：D1 用户 uuid 参数验证（验证通过后使用管理员UUID）
                     else if (请求UUID && env.DB && env.USER_ADMIN) {
                         const D1用户TOKEN = await MD5MD5(host + 请求UUID.toLowerCase());
                         if (url.searchParams.get('token') === D1用户TOKEN) {
                             // 验证用户是否有效
                             const validation = await validateUserUUID(请求UUID, env, ctx);
                             if (validation.valid) {
-                                有效订阅UUID = 请求UUID.toLowerCase();
+                                有效订阅UUID = userID; // 使用管理员UUID生成订阅
                             }
                         }
                     }
 
                     if (有效订阅UUID) {
                         config_JSON = await 读取config_JSON(env, host, 有效订阅UUID, env.PATH);
-                        config_JSON.UUID = 有效订阅UUID; // 确保使用正确的UUID
                         ctx.waitUntil(请求日志记录(env, request, 访问IP, 'Get_SUB', config_JSON));
                         const ua = UA.toLowerCase();
                         const expire = 4102329600;//2099-12-31 到期时间
@@ -1004,42 +1003,7 @@ export default {
             } else if (!envUUID) return fetch(Pages静态页面 + '/noKV').then(r => { const headers = new Headers(r.headers); headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); headers.set('Pragma', 'no-cache'); headers.set('Expires', '0'); return new Response(r.body, { status: 404, statusText: r.statusText, headers }); });
         } else if (管理员密码) {// ws代理
             await 反代参数获取(request);
-
-            // 从协议中提取实际使用的UUID
-            const earlyData = request.headers.get('sec-websocket-protocol') || '';
-            let 实际UUID = userID; // 默认使用环境变量UUID
-
-            // 尝试从earlyData解析真实UUID
-            try {
-                if (earlyData) {
-                    const decoded = atob(earlyData.replace(/-/g, '+').replace(/_/g, '/'));
-                    const bytes = new Uint8Array(decoded.length);
-                    for (let i = 0; i < decoded.length; i++) bytes[i] = decoded.charCodeAt(i);
-                    if (bytes.length >= 17) {
-                        const uuidBytes = bytes.slice(1, 17);
-                        const hex = [...uuidBytes].map(b => b.toString(16).padStart(2, '0')).join('');
-                        实际UUID = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-                    }
-                }
-            } catch (e) {
-                console.log('[UUID解析] 解析失败，使用默认UUID');
-            }
-
-            // D1用户验证 - 如果启用了D1数据库且不是管理员UUID
-            if (env.DB && env.USER_ADMIN && 实际UUID.toLowerCase() !== userID.toLowerCase()) {
-                const validation = await validateUserUUID(实际UUID, env, ctx);
-                if (!validation.valid && validation.reason !== 'no_db') {
-                    console.log(`[D1验证] 用户 ${实际UUID} 验证失败: ${validation.reason}`);
-                    const wssPair = new WebSocketPair();
-                    const [client, server] = Object.values(wssPair);
-                    server.accept();
-                    server.close(1008, 'User not found or expired');
-                    return new Response(null, { status: 101, webSocket: client });
-                }
-                console.log(`[D1验证] 用户 ${实际UUID} 验证通过`);
-            }
-
-            return await 处理WS请求(request, 实际UUID);
+            return await 处理WS请求(request, userID);
         }
 
         let 伪装页URL = env.URL || 'nginx';
