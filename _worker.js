@@ -54,30 +54,31 @@ function generateUUID() {
 
 // 用户管理面板HTML
 function getUserAdminHTML(host, users = [], message = '') {
+    const userRows = users.map(u => `<tr><td>${u.name || '-'}</td><td><span class="uuid-text">${u.uuid}</span></td><td>${u.expire_date || '永久'}</td><td>${u.note || '-'}</td><td class="actions"><button class="btn btn-sm btn-primary" onclick="copyUUID('${u.uuid}')">复制UUID</button><button class="btn btn-sm btn-success" onclick="copySub('${u.uuid}')">复制订阅</button><button class="btn btn-sm btn-danger" onclick="deleteUser('${u.uuid}')">删除</button></td></tr>`).join('');
+    const msgHtml = message ? `<div class="message ${message.includes('成功') ? 'success' : 'error'}">${message}</div>` : '';
     return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>用户管理</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100vh;color:#fff;padding:20px}.container{max-width:1000px;margin:0 auto}.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px}.header h1{font-size:24px;background:linear-gradient(45deg,#00d4ff,#0099cc);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.btn{padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px;transition:all .3s;text-decoration:none}.btn-primary{background:linear-gradient(45deg,#00d4ff,#0099cc);color:#fff}.btn-success{background:#00c853;color:#fff}.btn-danger{background:#ff4757;color:#fff}.btn-sm{padding:6px 12px;font-size:12px}.card{background:rgba(255,255,255,0.05);border-radius:16px;padding:20px;margin-bottom:20px;backdrop-filter:blur(10px)}.form-group{margin-bottom:15px}.form-group label{display:block;margin-bottom:5px;color:#aaa;font-size:14px}.form-group input{width:100%;padding:12px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(0,0,0,0.2);color:#fff;font-size:14px}.form-group input:focus{outline:none;border-color:#00d4ff}.table{width:100%;border-collapse:collapse}.table th,.table td{padding:12px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1)}.table th{color:#aaa;font-weight:500}.actions{display:flex;gap:6px;flex-wrap:wrap}.message{padding:12px;border-radius:8px;margin-bottom:20px}.message.success{background:rgba(0,200,83,0.2);border:1px solid #00c853}.message.error{background:rgba(255,71,87,0.2);border:1px solid #ff4757}.uuid-text{font-family:monospace;font-size:11px;word-break:break-all;max-width:150px;display:inline-block}@media(max-width:768px){.table th:nth-child(4),.table td:nth-child(4){display:none}.actions{flex-direction:column}}</style></head>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100vh;color:#fff;padding:20px}.container{max-width:1000px;margin:0 auto}.header{margin-bottom:30px}.header h1{font-size:24px;background:linear-gradient(45deg,#00d4ff,#0099cc);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.btn{padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-size:14px;transition:all .3s}.btn-primary{background:linear-gradient(45deg,#00d4ff,#0099cc);color:#fff}.btn-success{background:#00c853;color:#fff}.btn-danger{background:#ff4757;color:#fff}.btn-sm{padding:6px 12px;font-size:12px}.card{background:rgba(255,255,255,0.05);border-radius:16px;padding:20px;margin-bottom:20px;backdrop-filter:blur(10px)}.form-group{margin-bottom:15px}.form-group label{display:block;margin-bottom:5px;color:#aaa;font-size:14px}.form-group input{width:100%;padding:12px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(0,0,0,0.2);color:#fff;font-size:14px}.form-group input:focus{outline:none;border-color:#00d4ff}.table{width:100%;border-collapse:collapse}.table th,.table td{padding:12px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.1)}.table th{color:#aaa;font-weight:500}.actions{display:flex;gap:6px;flex-wrap:wrap}.message{padding:12px;border-radius:8px;margin-bottom:20px}.message.success{background:rgba(0,200,83,0.2);border:1px solid #00c853}.message.error{background:rgba(255,71,87,0.2);border:1px solid #ff4757}.uuid-text{font-family:monospace;font-size:11px;word-break:break-all;max-width:150px;display:inline-block}@media(max-width:768px){.table th:nth-child(4),.table td:nth-child(4){display:none}.actions{flex-direction:column}}</style></head>
 <body><div class="container"><div class="header"><h1>👥 用户管理</h1></div>
-\${message ? \`<div class="message \${message.includes('成功') ? 'success' : 'error'}">\${message}</div>\` : ''}
+${msgHtml}
 <div class="card"><h3 style="margin-bottom:15px">添加新用户</h3><form id="addForm"><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px">
 <div class="form-group"><label>用户名</label><input type="text" name="name" placeholder="可选"></div>
 <div class="form-group"><label>到期日期</label><input type="date" name="expire_date"></div>
 <div class="form-group"><label>备注</label><input type="text" name="note" placeholder="可选"></div></div>
 <div style="margin-top:15px"><button type="submit" class="btn btn-primary">➕ 添加用户</button></div></form></div>
-<div class="card"><h3 style="margin-bottom:15px">用户列表 (\${users.length})</h3>
+<div class="card"><h3 style="margin-bottom:15px">用户列表 (${users.length})</h3>
 <table class="table"><thead><tr><th>用户名</th><th>UUID</th><th>到期日期</th><th>备注</th><th>操作</th></tr></thead><tbody>
-\${users.map(u => \`<tr><td>\${u.name || '-'}</td><td><span class="uuid-text">\${u.uuid}</span></td><td>\${u.expire_date || '永久'}</td><td>\${u.note || '-'}</td>
-<td class="actions"><button class="btn btn-sm btn-primary" onclick="copyUUID('\${u.uuid}')">复制UUID</button><button class="btn btn-sm btn-success" onclick="copySub('\${u.uuid}')">复制订阅</button><button class="btn btn-sm btn-danger" onclick="deleteUser('\${u.uuid}')">删除</button></td></tr>\`).join('')}
+${userRows}
 </tbody></table></div></div>
 <script>
-const host='${host}';
+const HOST='${host}';
 document.getElementById('addForm').onsubmit=async function(e){e.preventDefault();const fd=new FormData(this);const data={name:fd.get('name'),expire_date:fd.get('expire_date'),note:fd.get('note')};
 try{const r=await fetch('/user-admin/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const j=await r.json();if(j.success)location.reload();else alert('添加失败: '+j.error)}catch(e){alert('请求失败')}};
 async function deleteUser(uuid){if(!confirm('确定删除此用户?'))return;try{const r=await fetch('/user-admin/api/users',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({uuid})});const j=await r.json();if(j.success)location.reload();else alert('删除失败')}catch(e){alert('请求失败')}};
 function copyUUID(uuid){navigator.clipboard.writeText(uuid);alert('UUID已复制')};
-function copySub(uuid){const subUrl='https://'+host+'/user-admin/sub/'+uuid;navigator.clipboard.writeText(subUrl);alert('订阅链接已复制:\\n'+subUrl)};
-
+function copySub(uuid){const subUrl='https://'+HOST+'/user-admin/sub/'+uuid;navigator.clipboard.writeText(subUrl);alert('订阅链接已复制')};
 </script></body></html>`;
 }
+
 
 // 用户管理登录页面HTML
 function getUserAdminLoginHTML(error = '') {
