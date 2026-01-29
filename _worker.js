@@ -581,11 +581,16 @@ async function 处理WS请求(request, validUUIDs) {
             }
 
             if (判断是否是木马) {
-                const { port, hostname, rawClientData } = 解析木马请求(chunk, validUUIDs);
+                const parseResult = 解析木马请求(chunk, validUUIDs);
+                if (parseResult.hasError) throw new Error(parseResult.message || 'Trojan parse error');
+                const { port, hostname, rawClientData } = parseResult;
                 if (isSpeedTestSite(hostname)) throw new Error('Speedtest site is blocked');
-                await forwardataTCP(hostname, port, rawClientData, serverSock, null, remoteConnWrapper, validUUIDs);
+                // 传递第一个有效 UUID 字符串给 forwardataTCP（用于反代随机种子）
+                await forwardataTCP(hostname, port, rawClientData, serverSock, null, remoteConnWrapper, validUUIDs[0]);
             } else {
-                const { port, hostname, rawIndex, version, isUDP } = 解析魏烈思请求(chunk, validUUIDs);
+                const parseResult = 解析魏烈思请求(chunk, validUUIDs);
+                if (parseResult.hasError) throw new Error(parseResult.message || 'VLESS parse error');
+                const { port, hostname, rawIndex, version, isUDP } = parseResult;
                 if (isSpeedTestSite(hostname)) throw new Error('Speedtest site is blocked');
                 if (isUDP) {
                     if (port === 53) isDnsQuery = true;
@@ -594,8 +599,10 @@ async function 处理WS请求(request, validUUIDs) {
                 const respHeader = new Uint8Array([version[0], 0]);
                 const rawData = chunk.slice(rawIndex);
                 if (isDnsQuery) return forwardataudp(rawData, serverSock, respHeader);
-                await forwardataTCP(hostname, port, rawData, serverSock, respHeader, remoteConnWrapper, validUUIDs);
+                // 传递第一个有效 UUID 字符串给 forwardataTCP
+                await forwardataTCP(hostname, port, rawData, serverSock, respHeader, remoteConnWrapper, validUUIDs[0]);
             }
+
         },
     })).catch((err) => {
         // console.error('Readable pipe error:', err);
