@@ -366,9 +366,12 @@ export default {
                     响应.headers.set('Set-Cookie', 'auth=; Path=/; Max-Age=0; HttpOnly');
                     return 响应;
                 } else if (访问路径 === 'sub') {//处理订阅请求
-                    const 订阅TOKEN = await MD5MD5(host + userID);
+                    // 支持用户管理：如果 URL 有 uuid 参数，使用该 UUID 进行订阅
+                    const 请求UUID = url.searchParams.get('uuid')?.toLowerCase() || userID;
+                    const 订阅TOKEN = await MD5MD5(host + 请求UUID);
                     if (url.searchParams.get('token') === 订阅TOKEN) {
-                        config_JSON = await 读取config_JSON(env, host, userID);
+                        config_JSON = await 读取config_JSON(env, host, 请求UUID);
+
                         ctx.waitUntil(请求日志记录(env, request, 访问IP, 'Get_SUB', config_JSON));
                         const ua = UA.toLowerCase();
                         const expire = 4102329600;//2099-12-31 到期时间
