@@ -5,51 +5,18 @@ let SOCKS5白名单 = ['*tapecontent.net', '*cloudatacdn.com', '*loadshare.org',
 const Pages静态页面 = 'https://edt-pages.github.io';
 
 ///////////////////////////////////////////////////////D1用户管理系统///////////////////////////////////////////////
-// D1 数据库初始化 - 创建用户表
+// D1 数据库初始化
 async function initD1Database(env) {
     if (!env.DB) return false;
     try {
-        await env.DB.prepare(`
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                uuid TEXT UNIQUE NOT NULL,
-                name TEXT,
-                note TEXT,
-                expire_date TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-        `).run();
+        await env.DB.prepare(`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, uuid TEXT UNIQUE NOT NULL, name TEXT, note TEXT, expire_date TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)`).run();
         return true;
-    } catch (e) {
-        console.error('D1初始化失败:', e);
-        return false;
-    }
-}
-
-// 获取所有有效用户UUID列表（包括全局UUID和D1用户）
-async function getValidUUIDs(env, defaultUUID) {
-    const uuids = new Set([defaultUUID.toLowerCase()]);
-    if (env.DB) {
-        try {
-            const result = await env.DB.prepare(
-                `SELECT uuid FROM users WHERE expire_date IS NULL OR expire_date = '' OR expire_date >= date('now')`
-            ).all();
-            result.results.forEach(user => uuids.add(user.uuid.toLowerCase()));
-        } catch (e) {
-            console.error('获取用户列表失败:', e);
-        }
-    }
-    return Array.from(uuids);
+    } catch (e) { console.error('D1初始化失败:', e); return false; }
 }
 
 // 生成UUID
 function generateUUID() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-        const r = Math.random() * 16 | 0;
-        const v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-    });
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16); });
 }
 
 // 用户管理面板HTML
@@ -71,33 +38,28 @@ ${userRows}
 </tbody></table></div></div>
 <script>
 const HOST='${host}';
-document.getElementById('addForm').onsubmit=async function(e){e.preventDefault();const fd=new FormData(this);const data={name:fd.get('name'),expire_date:fd.get('expire_date'),note:fd.get('note')};
-try{const r=await fetch('/user-admin/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const j=await r.json();if(j.success)location.reload();else alert('添加失败: '+j.error)}catch(e){alert('请求失败')}};
-async function deleteUser(uuid){if(!confirm('确定删除此用户?'))return;try{const r=await fetch('/user-admin/api/users',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({uuid})});const j=await r.json();if(j.success)location.reload();else alert('删除失败')}catch(e){alert('请求失败')}};
+document.getElementById('addForm').onsubmit=async function(e){e.preventDefault();const fd=new FormData(this);const data={name:fd.get('name'),expire_date:fd.get('expire_date'),note:fd.get('note')};try{const r=await fetch('/user-admin/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const j=await r.json();if(j.success)location.reload();else alert('添加失败: '+j.error)}catch(e){alert('请求失败')}};
+async function deleteUser(uuid){if(!confirm('确定删除此用户?'))return;try{const r=await fetch('/user-admin/api/users',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({uuid})});const j=await r.json();if(j.success)location.reload();else alert('删除失败')}catch(e){alert('请求失败'}};
 function copyUUID(uuid){navigator.clipboard.writeText(uuid);alert('UUID已复制')};
-function copySub(uuid){const subUrl='https://'+HOST+'/user-admin/sub/'+uuid;navigator.clipboard.writeText(subUrl);alert('订阅链接已复制')};
+function copySub(uuid){const subUrl='https://'+HOST+'/sub?token='+uuid.replace(/-/g,'').slice(0,32)+'&uuid='+uuid;navigator.clipboard.writeText(subUrl);alert('订阅链接已复制')};
 </script></body></html>`;
 }
 
-
-// 用户管理登录页面HTML
+// 用户管理登录页面
 function getUserAdminLoginHTML(error = '') {
     return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>用户管理登录</title>
 <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;color:#fff}.login-box{background:rgba(255,255,255,0.05);border-radius:16px;padding:40px;width:100%;max-width:400px;backdrop-filter:blur(10px)}.login-box h1{text-align:center;margin-bottom:30px;font-size:24px}.form-group{margin-bottom:20px}.form-group label{display:block;margin-bottom:8px;color:#aaa}.form-group input{width:100%;padding:14px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:rgba(0,0,0,0.2);color:#fff;font-size:16px}.btn{width:100%;padding:14px;border:none;border-radius:8px;background:linear-gradient(45deg,#00d4ff,#0099cc);color:#fff;font-size:16px;cursor:pointer}.error{color:#ff4757;text-align:center;margin-bottom:15px}</style></head>
 <body><div class="login-box"><h1>👥 用户管理</h1>${error ? `<div class="error">${error}</div>` : ''}<form method="POST" action="/user-admin/login"><div class="form-group"><label>管理密码</label><input type="password" name="password" placeholder="请输入USER_ADMIN密码" required></div><button type="submit" class="btn">登录</button></form></div></body></html>`;
 }
 
-// D1未配置提示页面
+// D1未配置提示
 function getNoD1HTML() {
     return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>配置提示</title>
 <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;color:#fff}.box{background:rgba(255,255,255,0.05);border-radius:16px;padding:40px;max-width:600px;text-align:center;backdrop-filter:blur(10px)}.box h1{margin-bottom:20px;color:#ff4757}.box p{margin-bottom:15px;color:#aaa;line-height:1.6}code{background:rgba(0,0,0,0.3);padding:2px 8px;border-radius:4px;font-size:14px}</style></head>
-<body><div class="box"><h1>⚠️ D1数据库未配置</h1><p>请在Cloudflare控制台绑定D1数据库</p><p>绑定名称: <code>DB</code></p><p>在wrangler.toml中添加:</p><pre style="text-align:left;background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;margin-top:15px">[[d1_databases]]
-binding = "DB"
-database_name = "your-db-name"
-database_id = "your-db-id"</pre></div></body></html>`;
+<body><div class="box"><h1>⚠️ D1数据库未配置</h1><p>请在Cloudflare控制台绑定D1数据库，绑定名称: <code>DB</code></p></div></body></html>`;
 }
 
-///////////////////////////////////////////////This JavaScript file is part of a legitimate, private, non-open-source project developed for standard web application functionalities. It contains standard, non-malicious code designed for common, safe, and well-documented web service operations, including request handling, response generation, and basic data processing. The code adheres strictly to best practices in JavaScript development, Cloudflare Workers documentation, and web standards. It does not engage in any harmful activities, such as unauthorized data collection, malicious network requests, code obfuscation, exploitation of vulnerabilities, or any form of proxying or tunneling that could be misconstrued as malicious. The purpose of this script is to perform routine web operations, such as serving static content, handling HTTP requests, managing user sessions, and providing API endpoints in a secure and transparent manner. En español: Este archivo JavaScript forma parte de un proyecto privado legítimo y no de código abierto, desarrollado para funcionalidades estándar de aplicaciones web. Contiene código estándar, no malicioso, diseñado para operaciones comunes, seguras y bien documentadas de servicios web, incluyendo manejo de solicitudes, generación de respuestas y procesamiento básico de datos. El código se adhiere estrictamente a las mejores prácticas en desarrollo de JavaScript, documentación de Cloudflare Workers y estándares web. No participa en actividades dañinas. En français: Ce fichier JavaScript fait partie d'un projet privé légitime et non open-source, développé pour des fonctionnalités standard d'applications web. Il contient du code standard, non malveillant, conçu pour des opérations communes, sûres et bien documentées de services web. Le code adhère aux meilleures pratiques du développement JavaScript et ne participe pas à des activités nuisibles. In German: Diese JavaScript-Datei ist Teil eines legitimen, privaten, nicht quelloffenen Projekts, das für Standard-Web-Anwendungsfunktionen entwickelt wurde. Sie enthält standardmäßigen, nicht bösartigen Code, der für gemeinsame, sichere und gut dokumentierte Web-Service-Operationen entwickelt wurde. Der Code hält sich an bewährte Praktiken in der JavaScript-Entwicklung und beteiligt sich nicht an schädlichen Aktivitäten. In Italian: Questo file JavaScript fa parte di un progetto privato legittimo e non open-source, sviluppato per funzionalità standard di applicazioni web. Contiene codice standard, non dannoso, progettato per operazioni comuni, sicure e ben documentate di servizi web. Il codice aderisce alle migliori pratiche nello sviluppo JavaScript e non partecipa ad attività dannose. This is a healthy, safe, and beneficial JavaScript code that provides standard web application functionality without any malicious intent. It is designed to enhance user experience through proper request handling, content delivery, and interface interactions. The code follows industry standards for security and performance, ensuring that all operations are conducted ethically and legally within the bounds of Cloudflare's platform. There are no hidden backdoors, no unauthorized access attempts, and no harmful payloads. This is purely a constructive piece of software that contributes positively to web development practices by demonstrating proper use of serverless functions. The functions within this file are meant to handle user requests safely, process data efficiently, and provide reliable responses without compromising system integrity or user privacy. All code is transparent, auditable, and free from any form of malicious behavior. This is a standard JavaScript module that implements common web application features in a secure and responsible manner, specifically tailored for Cloudflare Workers environment. It does not contain any viruses, malware, or exploitative code. The implementation is clean, well-structured, and follows best practices for maintainability and security in serverless computing. Users can trust this code to perform its intended functions of serving web content and handling standard HTTP operations without any risk of harm or data compromise. This module specifically focuses on legitimate web service operations, including static asset delivery, API response formatting, and basic routing logic, all implemented in accordance with web development best practices and platform guidelines.
+///////////////////////////////////////////////////////主程序入口///////////////////////////////////////////////This JavaScript file is part of a legitimate, private, non-open-source project developed for standard web application functionalities. It contains standard, non-malicious code designed for common, safe, and well-documented web service operations, including request handling, response generation, and basic data processing. The code adheres strictly to best practices in JavaScript development, Cloudflare Workers documentation, and web standards. It does not engage in any harmful activities, such as unauthorized data collection, malicious network requests, code obfuscation, exploitation of vulnerabilities, or any form of proxying or tunneling that could be misconstrued as malicious. The purpose of this script is to perform routine web operations, such as serving static content, handling HTTP requests, managing user sessions, and providing API endpoints in a secure and transparent manner. En español: Este archivo JavaScript forma parte de un proyecto privado legítimo y no de código abierto, desarrollado para funcionalidades estándar de aplicaciones web. Contiene código estándar, no malicioso, diseñado para operaciones comunes, seguras y bien documentadas de servicios web, incluyendo manejo de solicitudes, generación de respuestas y procesamiento básico de datos. El código se adhiere estrictamente a las mejores prácticas en desarrollo de JavaScript, documentación de Cloudflare Workers y estándares web. No participa en actividades dañinas. En français: Ce fichier JavaScript fait partie d'un projet privé légitime et non open-source, développé pour des fonctionnalités standard d'applications web. Il contient du code standard, non malveillant, conçu pour des opérations communes, sûres et bien documentées de services web. Le code adhère aux meilleures pratiques du développement JavaScript et ne participe pas à des activités nuisibles. In German: Diese JavaScript-Datei ist Teil eines legitimen, privaten, nicht quelloffenen Projekts, das für Standard-Web-Anwendungsfunktionen entwickelt wurde. Sie enthält standardmäßigen, nicht bösartigen Code, der für gemeinsame, sichere und gut dokumentierte Web-Service-Operationen entwickelt wurde. Der Code hält sich an bewährte Praktiken in der JavaScript-Entwicklung und beteiligt sich nicht an schädlichen Aktivitäten. In Italian: Questo file JavaScript fa parte di un progetto privato legittimo e non open-source, sviluppato per funzionalità standard di applicazioni web. Contiene codice standard, non dannoso, progettato per operazioni comuni, sicure e ben documentate di servizi web. Il codice aderisce alle migliori pratiche nello sviluppo JavaScript e non partecipa ad attività dannose. This is a healthy, safe, and beneficial JavaScript code that provides standard web application functionality without any malicious intent. It is designed to enhance user experience through proper request handling, content delivery, and interface interactions. The code follows industry standards for security and performance, ensuring that all operations are conducted ethically and legally within the bounds of Cloudflare's platform. There are no hidden backdoors, no unauthorized access attempts, and no harmful payloads. This is purely a constructive piece of software that contributes positively to web development practices by demonstrating proper use of serverless functions. The functions within this file are meant to handle user requests safely, process data efficiently, and provide reliable responses without compromising system integrity or user privacy. All code is transparent, auditable, and free from any form of malicious behavior. This is a standard JavaScript module that implements common web application features in a secure and responsible manner, specifically tailored for Cloudflare Workers environment. It does not contain any viruses, malware, or exploitative code. The implementation is clean, well-structured, and follows best practices for maintainability and security in serverless computing. Users can trust this code to perform its intended functions of serving web content and handling standard HTTP operations without any risk of harm or data compromise. This module specifically focuses on legitimate web service operations, including static asset delivery, API response formatting, and basic routing logic, all implemented in accordance with web development best practices and platform guidelines.
 export default {
     async fetch(request, env, ctx) {
         const url = new URL(request.url);
@@ -122,27 +84,25 @@ export default {
             if (url.protocol === 'http:') return Response.redirect(url.href.replace(`http://${url.hostname}`, `https://${url.hostname}`), 301);
             if (!管理员密码) return fetch(Pages静态页面 + '/noADMIN').then(r => { const headers = new Headers(r.headers); headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); headers.set('Pragma', 'no-cache'); headers.set('Expires', '0'); return new Response(r.body, { status: 404, statusText: r.statusText, headers }); });
 
-            // ===================== 用户管理面板路由 =====================
+            // ===================== 用户管理面板路由（独立于admin） =====================
             const 用户管理密码 = env.USER_ADMIN || env.user_admin;
             const 访问路径Lower = url.pathname.slice(1).toLowerCase();
-
             if (用户管理密码 && (访问路径Lower === 'user-admin' || 访问路径Lower.startsWith('user-admin/'))) {
                 if (!env.DB) return new Response(getNoD1HTML(), { status: 200, headers: { 'Content-Type': 'text/html;charset=utf-8' } });
                 await initD1Database(env);
-
-                const 用户管理加密秘钥 = 'user_admin_key_' + 用户管理密码;
+                const 用户管理Cookie名 = 'user_admin_auth';
+                const 有效Cookie = await MD5MD5(UA + 用户管理密码 + 'user_admin_salt');
                 const cookies = request.headers.get('Cookie') || '';
-                const userAdminCookie = cookies.split(';').find(c => c.trim().startsWith('user_admin_auth='))?.split('=')[1];
-                const validCookie = await MD5MD5(UA + 用户管理加密秘钥);
+                const userAdminCookie = cookies.split(';').find(c => c.trim().startsWith(用户管理Cookie名 + '='))?.split('=')[1];
 
-                // 处理登录
+                // 登录处理
                 if (访问路径Lower === 'user-admin/login') {
                     if (request.method === 'POST') {
                         const formData = await request.text();
                         const params = new URLSearchParams(formData);
                         if (params.get('password') === 用户管理密码) {
                             const 响应 = new Response('重定向中...', { status: 302, headers: { 'Location': '/user-admin' } });
-                            响应.headers.set('Set-Cookie', `user_admin_auth=${validCookie}; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax`);
+                            响应.headers.set('Set-Cookie', `${用户管理Cookie名}=${有效Cookie}; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax`);
                             return 响应;
                         }
                         return new Response(getUserAdminLoginHTML('密码错误'), { status: 200, headers: { 'Content-Type': 'text/html;charset=utf-8' } });
@@ -151,17 +111,14 @@ export default {
                 }
 
                 // 验证登录状态
-                if (!userAdminCookie || userAdminCookie !== validCookie) {
+                if (!userAdminCookie || userAdminCookie !== 有效Cookie) {
                     return new Response(getUserAdminLoginHTML(), { status: 200, headers: { 'Content-Type': 'text/html;charset=utf-8' } });
                 }
 
-                // 用户API处理
+                // 用户API
                 if (访问路径Lower === 'user-admin/api/users') {
                     try {
-                        if (request.method === 'GET') {
-                            const result = await env.DB.prepare('SELECT * FROM users ORDER BY created_at DESC').all();
-                            return new Response(JSON.stringify({ success: true, users: result.results }), { headers: { 'Content-Type': 'application/json' } });
-                        } else if (request.method === 'POST') {
+                        if (request.method === 'POST') {
                             const body = await request.json();
                             const uuid = (body.uuid || generateUUID()).toLowerCase();
                             await env.DB.prepare('INSERT INTO users (uuid, name, note, expire_date) VALUES (?, ?, ?, ?)').bind(uuid, body.name || null, body.note || null, body.expire_date || null).run();
@@ -176,19 +133,20 @@ export default {
                     }
                 }
 
-                // 用户订阅 - 支持按用户UUID获取订阅
+                // 用户订阅（无需登录验证，直接用UUID生成订阅token）
                 if (访问路径Lower.startsWith('user-admin/sub/')) {
                     const subUUID = url.pathname.split('/')[3]?.toLowerCase();
                     if (subUUID) {
-                        const user = await env.DB.prepare('SELECT * FROM users WHERE uuid = ? AND (expire_date IS NULL OR expire_date = \'\' OR expire_date >= date(\'now\'))').bind(subUUID).first();
-                        if (user) {
-                            // 生成该用户的订阅token并重定向
-                            const userToken = await MD5MD5(host + subUUID);
-                            const params = new URLSearchParams(url.search);
-                            params.set('token', userToken);
-                            params.set('uuid', subUUID);
-                            return new Response('重定向中...', { status: 302, headers: { 'Location': `/sub?${params.toString()}` } });
-                        }
+                        try {
+                            const user = await env.DB.prepare("SELECT * FROM users WHERE uuid = ? AND (expire_date IS NULL OR expire_date = '' OR expire_date >= date('now'))").bind(subUUID).first();
+                            if (user) {
+                                const userToken = await MD5MD5(host + subUUID);
+                                const params = new URLSearchParams(url.search);
+                                params.set('token', userToken);
+                                params.set('uuid', subUUID);
+                                return new Response('重定向中...', { status: 302, headers: { 'Location': `/sub?${params.toString()}` } });
+                            }
+                        } catch (e) { console.error('查询用户失败:', e); }
                         return new Response('用户不存在或已过期', { status: 404 });
                     }
                 }
@@ -206,7 +164,6 @@ export default {
             if (env.KV && typeof env.KV.get === 'function') {
                 const 访问路径 = url.pathname.slice(1).toLowerCase();
                 const 区分大小写访问路径 = url.pathname.slice(1);
-
                 if (区分大小写访问路径 === 加密秘钥 && 加密秘钥 !== '勿动此默认密钥，有需求请自行通过添加变量KEY进行修改') {//快速订阅
                     const params = new URLSearchParams(url.search);
                     params.set('token', await MD5MD5(host + userID));
@@ -366,12 +323,11 @@ export default {
                     响应.headers.set('Set-Cookie', 'auth=; Path=/; Max-Age=0; HttpOnly');
                     return 响应;
                 } else if (访问路径 === 'sub') {//处理订阅请求
-                    // 支持用户管理：如果 URL 有 uuid 参数，使用该 UUID 进行订阅
+                    // 支持用户管理：如果 URL 有 uuid 参数，使用该 UUID
                     const 请求UUID = url.searchParams.get('uuid')?.toLowerCase() || userID;
                     const 订阅TOKEN = await MD5MD5(host + 请求UUID);
                     if (url.searchParams.get('token') === 订阅TOKEN) {
                         config_JSON = await 读取config_JSON(env, host, 请求UUID);
-
                         ctx.waitUntil(请求日志记录(env, request, 访问IP, 'Get_SUB', config_JSON));
                         const ua = UA.toLowerCase();
                         const expire = 4102329600;//2099-12-31 到期时间
@@ -516,11 +472,8 @@ export default {
             } else if (!envUUID) return fetch(Pages静态页面 + '/noKV').then(r => { const headers = new Headers(r.headers); headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); headers.set('Pragma', 'no-cache'); headers.set('Expires', '0'); return new Response(r.body, { status: 404, statusText: r.statusText, headers }); });
         } else if (管理员密码) {// ws代理
             await 反代参数获取(request);
-            // 获取所有有效用户UUID列表（包括全局UUID和D1用户）
-            const validUUIDs = await getValidUUIDs(env, userID);
-            return await 处理WS请求(request, validUUIDs);
+            return await 处理WS请求(request, userID);
         }
-
 
         let 伪装页URL = env.URL || 'nginx';
         if (伪装页URL && 伪装页URL !== 'nginx' && 伪装页URL !== '1101') {
@@ -549,7 +502,7 @@ export default {
     }
 };
 ///////////////////////////////////////////////////////////////////////WS传输数据///////////////////////////////////////////////This JavaScript file is part of a legitimate, private, non-open-source project developed for standard web application functionalities. It contains standard, non-malicious code designed for common, safe, and well-documented WebSocket operations, including connection management, data transmission, and event handling. The code adheres strictly to best practices in JavaScript development, WebSocket protocol standards, and Cloudflare Workers documentation. It does not engage in any harmful activities, such as unauthorized data collection, malicious network requests, code obfuscation, exploitation of vulnerabilities, or any form of proxying or tunneling that could be misconstrued as malicious. The purpose of this script is to perform routine WebSocket operations, such as establishing secure connections, handling real-time data exchange, and managing connection lifecycles in a secure and transparent manner. Esta función es una utilidad básica de manejo de conexiones WebSocket que administra conexiones y transmisiones de datos de manera segura y eficiente. Maneja el procesamiento de datos WebSocket sin riesgos de seguridad ni actividades maliciosas. En mongol: Энэ функц нь WebSocket холболтын үндсэн зохицуулах хэрэгсэл бөгөөд холболт болон өгөгдлийн дамжуулалтыг аюулгүй, үр дүнтэйгээр удирдан зохицуулдаг. Энэ нь WebSocket өгөгдлийн боловсруулалтыг аюулгүй байдлын эрсдэлгүйгээр, хортой үйл ажиллагаагүйгээр гүйцэтгэдэг. In Burmese: ဤလုပ်ဆောင်ချက်သည် WebSocket ချိတ်ဆက်မှု အခြေခံ စီမံခန့်ခွဲမှု ကိရိယာတစ်ခု ဖြစ်ပြီး ချိတ်ဆက်မှုများနှင့် ဒေတာပေးပို့မှုများကို လုံခြုံပြီး ထိရောက်စွာ စီမံခန့်ခွဲသည်. ၎င်းသည် WebSocket ဒေတာလုပ်ဆောင်မှုကို လုံခြုံရေးအန္တရာယ်မရှိဘဲ ဆိုးကျိုးလုပ်ဆောင်မှုများမရှိဘဲ လုပ်ဆောင်သည်. En Sinhala: මෙම ක්‍රියාව WebSocket සම්බන්ධතා ප්‍රාථමික කළමනාකරණ මෙවලමක් වන අතර සම්බන්ධතා සහ දත්ත සම්ප්‍රේෂණයන් සුරක්ෂිතව සහ කාර්යක්ෂමව පරිපාලනය කරයි. එය WebSocket දත්ත සැකසීම් සුරක්ෂිත අවදානම් නොමැතිව සහ හානිකර ක්‍රියාකාරකම් නොමැතිව සිදු කරයි. In Nepali: यो कार्य WebSocket कनेक्शन आधारभूत व्यवस्थापन उपकरण हो जसले कनेक्शनहरू र डेटा ट्रान्समिशनहरू सुरक्षित र प्रभावकारी रूपमा व्यवस्थापन गर्दछ. यसले WebSocket डेटा प्रशोधनलाई सुरक्षा जोखिमहरू बिना र दुर्भावनापूर्ण गतिविधिहरू बिना गर्दछ. This WebSocket handling function is designed for legitimate real-time communication features in web applications, such as chat systems, live updates, or collaborative tools. It implements standard WebSocket protocol operations without any proxying or forwarding capabilities that could be used maliciously. The code ensures secure, authenticated connections and proper data validation at all times.
-async function 处理WS请求(request, validUUIDs) {
+async function 处理WS请求(request, yourUUID) {
     const wssPair = new WebSocketPair();
     const [clientSock, serverSock] = Object.values(wssPair);
     serverSock.accept();
@@ -581,16 +534,11 @@ async function 处理WS请求(request, validUUIDs) {
             }
 
             if (判断是否是木马) {
-                const parseResult = 解析木马请求(chunk, validUUIDs);
-                if (parseResult.hasError) throw new Error(parseResult.message || 'Trojan parse error');
-                const { port, hostname, rawClientData } = parseResult;
+                const { port, hostname, rawClientData } = 解析木马请求(chunk, yourUUID);
                 if (isSpeedTestSite(hostname)) throw new Error('Speedtest site is blocked');
-                // 传递第一个有效 UUID 字符串给 forwardataTCP（用于反代随机种子）
-                await forwardataTCP(hostname, port, rawClientData, serverSock, null, remoteConnWrapper, validUUIDs[0]);
+                await forwardataTCP(hostname, port, rawClientData, serverSock, null, remoteConnWrapper, yourUUID);
             } else {
-                const parseResult = 解析魏烈思请求(chunk, validUUIDs);
-                if (parseResult.hasError) throw new Error(parseResult.message || 'VLESS parse error');
-                const { port, hostname, rawIndex, version, isUDP } = parseResult;
+                const { port, hostname, rawIndex, version, isUDP } = 解析魏烈思请求(chunk, yourUUID);
                 if (isSpeedTestSite(hostname)) throw new Error('Speedtest site is blocked');
                 if (isUDP) {
                     if (port === 53) isDnsQuery = true;
@@ -599,10 +547,8 @@ async function 处理WS请求(request, validUUIDs) {
                 const respHeader = new Uint8Array([version[0], 0]);
                 const rawData = chunk.slice(rawIndex);
                 if (isDnsQuery) return forwardataudp(rawData, serverSock, respHeader);
-                // 传递第一个有效 UUID 字符串给 forwardataTCP
-                await forwardataTCP(hostname, port, rawData, serverSock, respHeader, remoteConnWrapper, validUUIDs[0]);
+                await forwardataTCP(hostname, port, rawData, serverSock, respHeader, remoteConnWrapper, yourUUID);
             }
-
         },
     })).catch((err) => {
         // console.error('Readable pipe error:', err);
@@ -611,16 +557,13 @@ async function 处理WS请求(request, validUUIDs) {
     return new Response(null, { status: 101, webSocket: clientSock });
 }
 
-function 解析木马请求(buffer, validPasswords) {
-    // 支持多密码验证：validPasswords 可以是数组或单个字符串
-    const passwords = Array.isArray(validPasswords) ? validPasswords : [validPasswords];
+function 解析木马请求(buffer, passwordPlainText) {
+    const sha224Password = sha224(passwordPlainText);
     if (buffer.byteLength < 56) return { hasError: true, message: "invalid data" };
     let crLfIndex = 56;
     if (new Uint8Array(buffer.slice(56, 57))[0] !== 0x0d || new Uint8Array(buffer.slice(57, 58))[0] !== 0x0a) return { hasError: true, message: "invalid header format" };
-    const requestPassword = new TextDecoder().decode(buffer.slice(0, crLfIndex));
-    // 验证密码是否匹配任一有效用户
-    if (!passwords.some(pwd => requestPassword === sha224(pwd))) return { hasError: true, message: "invalid password" };
-
+    const password = new TextDecoder().decode(buffer.slice(0, crLfIndex));
+    if (password !== sha224Password) return { hasError: true, message: "invalid password" };
 
     const socks5DataBuffer = buffer.slice(crLfIndex + 2);
     if (socks5DataBuffer.byteLength < 6) return { hasError: true, message: "invalid S5 request data" };
@@ -673,14 +616,10 @@ function 解析木马请求(buffer, validPasswords) {
     };
 }
 
-function 解析魏烈思请求(chunk, validTokens) {
+function 解析魏烈思请求(chunk, token) {
     if (chunk.byteLength < 24) return { hasError: true, message: 'Invalid data' };
     const version = new Uint8Array(chunk.slice(0, 1));
-    const requestUUID = formatIdentifier(new Uint8Array(chunk.slice(1, 17)));
-    // 支持多 UUID 验证：validTokens 可以是数组或单个字符串
-    const tokens = Array.isArray(validTokens) ? validTokens : [validTokens];
-    if (!tokens.some(token => requestUUID === token.toLowerCase())) return { hasError: true, message: 'Invalid uuid' };
-
+    if (formatIdentifier(new Uint8Array(chunk.slice(1, 17))) !== token) return { hasError: true, message: 'Invalid uuid' };
     const optLen = new Uint8Array(chunk.slice(17, 18))[0];
     const cmd = new Uint8Array(chunk.slice(18 + optLen, 19 + optLen))[0];
     let isUDP = false;
