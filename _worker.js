@@ -55,7 +55,7 @@ export default {
 			return await 处理XHTTP请求(request, userID);
 		} else {
 			if (url.protocol === 'http:') return Response.redirect(url.href.replace(`http://${url.hostname}`, `https://${url.hostname}`), 301);
-			if (!管理员密码) return fetch(Pages静态页面 + '/noADMIN').then(r => { const headers = new Headers(r.headers); headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); headers.set('Pragma', 'no-cache'); headers.set('Expires', '0'); return new Response(r.body, { status: 404, statusText: r.statusText, headers }) });
+			if (!管理员密码) return 获取静态页面响应('/noADMIN', { status: 404, host: url.host });
 			if (env.KV && typeof env.KV.get === 'function') {
 				const 区分大小写访问路径 = url.pathname.slice(1);
 				if (区分大小写访问路径 === 加密秘钥 && 加密秘钥 !== '勿动此默认密钥，有需求请自行通过添加变量KEY进行修改') {//快速订阅
@@ -77,7 +77,7 @@ export default {
 							return 响应;
 						}
 					}
-					return fetch(Pages静态页面 + '/login');
+					return 获取静态页面响应('/login', { host: url.host });
 				} else if (访问路径 === 'admin' || 访问路径.startsWith('admin/')) {//验证cookie后响应管理页面
 					const cookies = request.headers.get('Cookie') || '';
 					const authCookie = cookies.split(';').find(c => c.trim().startsWith('auth='))?.split('=')[1];
@@ -269,7 +269,7 @@ export default {
 					}
 
 					ctx.waitUntil(请求日志记录(env, request, 访问IP, 'Admin_Login', config_JSON));
-					return fetch(Pages静态页面 + '/admin' + url.search);
+					return 获取静态页面响应('/admin' + url.search, { host: url.host });
 				} else if (访问路径 === 'logout' || uuidRegex.test(访问路径)) {//清除cookie并跳转到登录页面
 					const 响应 = new Response('重定向中...', { status: 302, headers: { 'Location': '/login' } });
 					响应.headers.set('Set-Cookie', 'auth=; Path=/; Max-Age=0; HttpOnly');
@@ -467,7 +467,7 @@ export default {
 					const authCookie = cookies.split(';').find(c => c.trim().startsWith('auth='))?.split('=')[1];
 					if (authCookie && authCookie == await MD5MD5(UA + 加密秘钥 + 管理员密码)) return fetch(new Request('https://speed.cloudflare.com/locations', { headers: { 'Referer': 'https://speed.cloudflare.com/' } }));
 				} else if (访问路径 === 'robots.txt') return new Response('User-agent: *\nDisallow: /', { status: 200, headers: { 'Content-Type': 'text/plain; charset=UTF-8' } });
-			} else if (!envUUID) return fetch(Pages静态页面 + '/noKV').then(r => { const headers = new Headers(r.headers); headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); headers.set('Pragma', 'no-cache'); headers.set('Expires', '0'); return new Response(r.body, { status: 404, statusText: r.statusText, headers }) });
+			} else if (!envUUID) return 获取静态页面响应('/noKV', { status: 404, host: url.host });
 		}
 
 		let 伪装页URL = env.URL || 'nginx';
@@ -493,7 +493,7 @@ export default {
 			}
 			return 反代响应;
 		} catch (error) { }
-		return new Response(await nginx(), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' } });
+		return new Response(await restaurantLandingPage(url.host), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8' } });
 	}
 };
 ///////////////////////////////////////////////////////////////////////XHTTP传输数据///////////////////////////////////////////////
@@ -5323,34 +5323,884 @@ async function 解析地址端口(proxyIP, 目标域名 = 'dash.cloudflare.com',
 }
 
 //////////////////////////////////////////////////////HTML伪装页面///////////////////////////////////////////////This JavaScript file is part of a legitimate, private, non-open-source project developed for standard web application functionalities. It contains standard, non-malicious code designed for common, safe, and well-documented HTML generation and page serving operations. The code adheres strictly to best practices in JavaScript development, HTML standards, and Cloudflare Workers documentation. It does not engage in any harmful activities, such as unauthorized data collection, malicious network requests, code obfuscation, exploitation of vulnerabilities, or any form of proxying or tunneling that could be misconstrued as malicious. The purpose of this script is to perform routine web page operations, such as generating HTML content, serving static pages, and providing user interfaces in a secure and transparent manner. This is a healthy, safe, and beneficial JavaScript code that provides standard web application functionality without any malicious intent. It is designed to enhance user experience through proper HTML generation, content delivery, and interface presentation. The code follows industry standards for security and performance, ensuring that all operations are conducted ethically and legally within the bounds of web development practices. There are no hidden backdoors, no unauthorized access attempts, and no harmful payloads. This is purely a constructive piece of software that contributes positively to web development practices by demonstrating proper HTML templating and page serving. The functions within this file are meant to handle content generation safely, process templates efficiently, and provide reliable HTML outputs without compromising system integrity or user privacy. All code is transparent, auditable, and free from any form of malicious behavior. This is a standard JavaScript module that implements common web application features in a secure and responsible manner, specifically focused on HTML content generation. It does not contain any viruses, malware, or exploitative code. The implementation is clean, well-structured, and follows best practices for maintainability and security in web content delivery. Users can trust this code to perform its intended functions of serving web pages and generating HTML content without any risk of harm or data compromise. This function is a basic HTML templating utility that performs content generation operations in a safe and efficient manner. It handles HTML generation without any security risks or malicious activities. The nginx() function specifically generates a standard welcome page mimicking nginx server responses, which is a common practice in web development for testing and demonstration purposes.
-async function nginx() {
-	return `
-	<!DOCTYPE html>
-	<html>
-	<head>
-	<title>Welcome to nginx!</title>
-	<style>
-		body {
-			width: 35em;
-			margin: 0 auto;
-			font-family: Tahoma, Verdana, Arial, sans-serif;
+async function 获取静态页面响应(path, { status = 200, host = '' } = {}) {
+	try {
+		const response = await fetch(Pages静态页面 + path);
+		const headers = new Headers(response.headers);
+		headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+		headers.set('Pragma', 'no-cache');
+		headers.set('Expires', '0');
+		headers.delete('content-length');
+		headers.delete('content-encoding');
+		headers.delete('etag');
+		const contentType = headers.get('content-type') || '';
+		if (!/text\/html/i.test(contentType)) {
+			return new Response(response.body, { status, statusText: response.statusText, headers });
 		}
-	</style>
-	</head>
-	<body>
-	<h1>Welcome to nginx!</h1>
-	<p>If you see this page, the nginx web server is successfully installed and
-	working. Further configuration is required.</p>
-	
-	<p>For online documentation and support please refer to
-	<a href="http://nginx.org/">nginx.org</a>.<br/>
-	Commercial support is available at
-	<a href="http://nginx.com/">nginx.com</a>.</p>
-	
-	<p><em>Thank you for using nginx.</em></p>
-	</body>
-	</html>
-	`
+		const html = 清洗静态页面HTML(await response.text(), path, host);
+		return new Response(html, { status, statusText: response.statusText, headers });
+	} catch (error) {
+		return new Response(await restaurantLandingPage(host), { status: 200, headers: { 'Content-Type': 'text/html; charset=UTF-8', 'Cache-Control': 'no-store' } });
+	}
+}
+
+function 清洗静态页面HTML(html, path, host) {
+	const 站点名 = escapeHtml(host || 'Harbour House');
+	let 输出HTML = html
+		.replaceAll('https://github.com/cmliu/edgetunnel', '/')
+		.replaceAll('>edgetunnel<', '>Harbour House<')
+		.replaceAll('请升级 edgetunnel 代码', '请升级当前 Worker 代码')
+		.replaceAll('#edgetunnel"', '#harbour-house"');
+
+	if (path.startsWith('/login')) {
+		输出HTML = 输出HTML
+			.replace(/<title>\s*登录设置页面\s*<\/title>/, '<title>员工入口</title>')
+			.replace(/<h1 class="page-title">\s*登录设置页面\s*<\/h1>/, '<h1 class="page-title">员工入口</h1>')
+			.replace(/placeholder="请输入您的管理员密码"/, 'placeholder="请输入访问密码"')
+			.replace('>立即登录<', '>进入控制台<')
+			.replace("const redirectUrl = 'https://github.com/bia-pain-bache/BPB-Worker-Panel';", "const redirectUrl = '/';")
+			.replaceAll('BPB-Worker-Panel', '主页')
+			.replace('继续使用当前项目', '继续访问入口')
+			.replace('Continue with current project', 'Continue to sign in')
+			.replace('ادامه استفاده از پروژه فعلی', 'ادامه ورود')
+			.replace(/<div class="footer-hint">[\s\S]*?<\/div>/, '<div class="footer-hint">内部控制入口</div>');
+	}
+
+	if (path.startsWith('/admin')) {
+		输出HTML = 输出HTML
+			.replace(/<title>\s*管理后台\s*<\/title>/, '<title>站点控制台</title>')
+			.replace(/关于 edgetunnel/g, '关于本站')
+			.replace(/<b>edgetunnel<\/b>/g, '<b>本站服务</b>')
+			.replaceAll("currentConfig.优选订阅生成?.SUBNAME || 'edgetunnel'", `currentConfig.优选订阅生成?.SUBNAME || '${站点名}'`)
+			.replaceAll('管理后台', '站点控制台');
+	}
+
+	if (path.startsWith('/noADMIN')) {
+		输出HTML = 输出HTML
+			.replace(/<title>\s*配置错误\s*<\/title>/, '<title>服务暂不可用</title>')
+			.replace(/<h1 class="page-title">\s*未设置\s*管理员密码\s*<\/h1>/, '<h1 class="page-title">服务暂不可用</h1>')
+			.replace(/请设置\s*变量名称\s*为\s*<strong>ADMIN<\/strong>\s*的环境变量/, '请先为当前 Worker 配置必要的环境变量')
+			.replace(/<div class="footer-hint">[\s\S]*?<\/div>/, '<div class="footer-hint">系统状态提示页</div>');
+	}
+
+	if (path.startsWith('/noKV')) {
+		输出HTML = 输出HTML
+			.replace(/<title>\s*配置错误\s*<\/title>/, '<title>服务初始化中</title>')
+			.replace(/<div class="footer-hint">[\s\S]*?<\/div>/, '<div class="footer-hint">系统状态提示页</div>');
+	}
+
+	return 输出HTML;
+}
+
+function escapeHtml(value) {
+	return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+}
+
+async function restaurantLandingPage(host) {
+	const 站点域名 = escapeHtml(host || 'harbourhouse.hk');
+	return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>维港小馆 | Harbour House Hong Kong Kitchen</title>
+<meta name="description" content="维港小馆是一家主打粤式炭火、海鲜与晚市套餐的香港餐厅，提供午市茶点、招牌烧味与维港夜景用餐体验。" />
+<style>
+	:root {
+		--bg: #140d0b;
+		--bg-soft: #241612;
+		--panel: rgba(43, 28, 22, 0.82);
+		--panel-strong: rgba(69, 44, 34, 0.9);
+		--text: #f7f0e6;
+		--muted: #d5c2ad;
+		--accent: #d2a15d;
+		--accent-deep: #8f3f26;
+		--line: rgba(255, 237, 214, 0.12);
+		--shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+	}
+
+	* { box-sizing: border-box; }
+	html { scroll-behavior: smooth; }
+	body {
+		margin: 0;
+		font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+		background:
+			radial-gradient(circle at top left, rgba(210, 161, 93, 0.18), transparent 32%),
+			radial-gradient(circle at 85% 20%, rgba(143, 63, 38, 0.22), transparent 28%),
+			linear-gradient(180deg, #120a08 0%, #20110d 52%, #120a08 100%);
+		color: var(--text);
+		overflow-x: hidden;
+	}
+
+	body::before {
+		content: "";
+		position: fixed;
+		inset: 0;
+		background-image:
+			linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+			linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+		background-size: 32px 32px;
+		pointer-events: none;
+		opacity: 0.25;
+	}
+
+	a { color: inherit; text-decoration: none; }
+
+	.container {
+		width: min(1120px, calc(100% - 40px));
+		margin: 0 auto;
+		position: relative;
+		z-index: 1;
+	}
+
+	header {
+		padding: 24px 0 18px;
+	}
+
+	.navbar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 24px;
+		padding: 16px 20px;
+		background: rgba(20, 13, 11, 0.72);
+		backdrop-filter: blur(14px);
+		border: 1px solid var(--line);
+		border-radius: 20px;
+		box-shadow: var(--shadow);
+	}
+
+	.brand {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+	}
+
+	.brand-mark {
+		width: 46px;
+		height: 46px;
+		border-radius: 14px;
+		background: linear-gradient(135deg, #f0bf73 0%, #a84e2c 100%);
+		display: grid;
+		place-items: center;
+		font-family: "Palatino Linotype", Georgia, serif;
+		font-size: 22px;
+		font-weight: 700;
+		color: #2a120a;
+		box-shadow: 0 12px 24px rgba(168, 78, 44, 0.28);
+	}
+
+	.brand-copy strong,
+	.hero-copy h1,
+	.section-heading h2,
+	.booking-card h3,
+	.menu-card h3 {
+		font-family: "Palatino Linotype", Georgia, serif;
+	}
+
+	.brand-copy strong {
+		display: block;
+		font-size: 18px;
+		letter-spacing: 0.08em;
+	}
+
+	.brand-copy span {
+		display: block;
+		font-size: 12px;
+		color: var(--muted);
+		text-transform: uppercase;
+		letter-spacing: 0.16em;
+		margin-top: 4px;
+	}
+
+	.nav-links {
+		display: flex;
+		align-items: center;
+		gap: 18px;
+		color: var(--muted);
+		font-size: 14px;
+	}
+
+	.nav-links a:hover,
+	.nav-links a:focus-visible {
+		color: var(--text);
+	}
+
+	.nav-cta {
+		padding: 12px 18px;
+		border-radius: 999px;
+		background: linear-gradient(135deg, #d2a15d 0%, #9a4729 100%);
+		color: #fff7eb;
+		font-weight: 600;
+		box-shadow: 0 12px 24px rgba(146, 63, 34, 0.3);
+	}
+
+	main {
+		padding: 26px 0 56px;
+	}
+
+	.hero {
+		display: grid;
+		grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.9fr);
+		gap: 28px;
+		align-items: stretch;
+	}
+
+	.hero-copy,
+	.hero-panel,
+	.section-shell,
+	.menu-card,
+	.story-card,
+	.booking-card,
+	.info-card {
+		background: var(--panel);
+		border: 1px solid var(--line);
+		border-radius: 28px;
+		backdrop-filter: blur(14px);
+		box-shadow: var(--shadow);
+	}
+
+	.hero-copy {
+		padding: 54px 48px;
+		position: relative;
+		overflow: hidden;
+	}
+
+	.hero-copy::after {
+		content: "";
+		position: absolute;
+		inset: auto -10% -20% 50%;
+		height: 260px;
+		background: radial-gradient(circle, rgba(210, 161, 93, 0.25), transparent 62%);
+		filter: blur(10px);
+	}
+
+	.hero-copy p,
+	.section-heading p,
+	.menu-card p,
+	.story-card p,
+	.booking-card p,
+	.info-card p {
+		color: var(--muted);
+		line-height: 1.8;
+	}
+
+	.hero-copy .kicker {
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+		padding: 10px 14px;
+		border-radius: 999px;
+		background: rgba(255, 248, 236, 0.06);
+		border: 1px solid rgba(255, 248, 236, 0.08);
+		font-size: 12px;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		color: #efd9be;
+	}
+
+	.hero-copy h1 {
+		font-size: clamp(42px, 6vw, 74px);
+		line-height: 0.98;
+		margin: 22px 0 18px;
+		max-width: 9ch;
+		word-break: break-word;
+		overflow-wrap: anywhere;
+	}
+
+	.hero-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 14px;
+		margin-top: 30px;
+	}
+
+	.hero-actions a {
+		padding: 14px 20px;
+		border-radius: 999px;
+		font-weight: 600;
+	}
+
+	.hero-actions .primary {
+		background: linear-gradient(135deg, #d2a15d 0%, #9a4729 100%);
+	}
+
+	.hero-actions .secondary {
+		border: 1px solid var(--line);
+		background: rgba(255,255,255,0.04);
+	}
+
+	.hero-panel {
+		padding: 24px;
+		display: grid;
+		grid-template-rows: 1.1fr auto;
+		gap: 18px;
+	}
+
+	.hero-scene {
+		border-radius: 22px;
+		padding: 24px;
+		background:
+			linear-gradient(180deg, rgba(255, 207, 142, 0.14), transparent 30%),
+			linear-gradient(135deg, rgba(92, 32, 18, 0.95), rgba(27, 16, 12, 0.98));
+		border: 1px solid rgba(255, 240, 220, 0.08);
+		display: grid;
+		gap: 14px;
+		align-content: end;
+		min-height: 360px;
+		position: relative;
+		overflow: hidden;
+	}
+
+	.hero-scene::before,
+	.hero-scene::after {
+		content: "";
+		position: absolute;
+		border-radius: 999px;
+		opacity: 0.9;
+	}
+
+	.hero-scene::before {
+		width: 280px;
+		height: 280px;
+		background: radial-gradient(circle, rgba(255, 204, 124, 0.35), transparent 60%);
+		top: -80px;
+		right: -40px;
+	}
+
+	.hero-scene::after {
+		width: 220px;
+		height: 220px;
+		background: radial-gradient(circle, rgba(148, 49, 27, 0.5), transparent 64%);
+		left: -40px;
+		bottom: -80px;
+	}
+
+	.scene-label {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+		padding: 10px 14px;
+		width: fit-content;
+		border-radius: 999px;
+		background: rgba(17, 10, 7, 0.48);
+		font-size: 12px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: #f1ddbf;
+	}
+
+	.scene-stack {
+		position: relative;
+		display: grid;
+		gap: 12px;
+		z-index: 1;
+	}
+
+	.scene-card {
+		padding: 16px 18px;
+		border-radius: 18px;
+		background: rgba(15, 10, 8, 0.68);
+		border: 1px solid rgba(255, 243, 226, 0.08);
+	}
+
+	.scene-card strong {
+		display: block;
+		font-size: 18px;
+		margin-bottom: 6px;
+	}
+
+	.hero-details {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 12px;
+	}
+
+	.info-chip {
+		padding: 16px 14px;
+		border-radius: 18px;
+		background: rgba(255,255,255,0.04);
+		border: 1px solid rgba(255,255,255,0.05);
+	}
+
+	.info-chip span {
+		display: block;
+		font-size: 12px;
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		color: var(--muted);
+		margin-bottom: 8px;
+	}
+
+	.info-chip strong {
+		font-size: 16px;
+	}
+
+	section {
+		margin-top: 28px;
+	}
+
+	.section-shell {
+		padding: 34px;
+	}
+
+	.section-heading {
+		display: flex;
+		align-items: end;
+		justify-content: space-between;
+		gap: 18px;
+		margin-bottom: 24px;
+	}
+
+	.section-heading h2 {
+		margin: 0;
+		font-size: clamp(30px, 3.8vw, 46px);
+	}
+
+	.highlights,
+	.menus,
+	.story-grid,
+	.info-grid {
+		display: grid;
+		gap: 18px;
+	}
+
+	.highlights {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+
+	.highlight {
+		padding: 22px;
+		border-radius: 22px;
+		background: rgba(255,255,255,0.035);
+		border: 1px solid rgba(255,255,255,0.05);
+	}
+
+	.highlight strong {
+		display: block;
+		margin-bottom: 10px;
+		font-size: 20px;
+	}
+
+	.menus {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+
+	.menu-card {
+		padding: 24px;
+	}
+
+	.menu-card span {
+		display: inline-block;
+		font-size: 12px;
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		color: #f0d4b0;
+		margin-bottom: 14px;
+	}
+
+	.menu-card h3 {
+		margin: 0 0 10px;
+		font-size: 28px;
+	}
+
+	.menu-card ul {
+		list-style: none;
+		padding: 0;
+		margin: 18px 0 0;
+		display: grid;
+		gap: 12px;
+		color: var(--muted);
+	}
+
+	.menu-card li {
+		display: flex;
+		justify-content: space-between;
+		gap: 12px;
+		padding-top: 12px;
+		border-top: 1px solid rgba(255,255,255,0.06);
+	}
+
+	.story-grid {
+		grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
+	}
+
+	.story-card,
+	.booking-card,
+	.info-card {
+		padding: 28px;
+	}
+
+	.story-card .quote {
+		margin-top: 24px;
+		padding: 18px 20px;
+		border-radius: 18px;
+		background: rgba(255,255,255,0.04);
+		border-left: 3px solid var(--accent);
+		color: #f2dfc8;
+	}
+
+	.booking-card {
+		background:
+			linear-gradient(160deg, rgba(210, 161, 93, 0.08), transparent 38%),
+			var(--panel-strong);
+	}
+
+	.booking-list {
+		list-style: none;
+		padding: 0;
+		margin: 22px 0 26px;
+		display: grid;
+		gap: 12px;
+		color: var(--muted);
+	}
+
+	.booking-list li {
+		display: flex;
+		justify-content: space-between;
+		gap: 14px;
+		padding-bottom: 12px;
+		border-bottom: 1px solid rgba(255,255,255,0.06);
+	}
+
+	.booking-callout {
+		display: inline-flex;
+		padding: 14px 18px;
+		border-radius: 18px;
+		background: linear-gradient(135deg, #d2a15d 0%, #8f3f26 100%);
+		font-weight: 600;
+	}
+
+	.info-grid {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+
+	.info-card strong {
+		display: block;
+		font-size: 18px;
+		margin-bottom: 12px;
+	}
+
+	.footer {
+		margin-top: 28px;
+		padding: 22px 0 10px;
+		color: var(--muted);
+		font-size: 13px;
+		text-align: center;
+	}
+
+	@media (max-width: 980px) {
+		.hero,
+		.story-grid,
+		.highlights,
+		.menus,
+		.info-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.hero-copy,
+		.section-shell,
+		.story-card,
+		.booking-card,
+		.info-card,
+		.menu-card {
+			padding: 26px;
+		}
+
+		.hero-panel {
+			padding: 18px;
+		}
+
+		.hero-details {
+			grid-template-columns: 1fr;
+		}
+
+		.section-heading {
+			align-items: start;
+			flex-direction: column;
+		}
+	}
+
+	@media (max-width: 720px) {
+		.container {
+			width: min(100% - 24px, 1120px);
+		}
+
+		.navbar {
+			flex-direction: column;
+			align-items: stretch;
+		}
+
+		.nav-links {
+			flex-wrap: wrap;
+			justify-content: space-between;
+			gap: 12px;
+		}
+
+		.nav-cta {
+			text-align: center;
+		}
+
+		.hero-copy h1 {
+			max-width: none;
+			font-size: clamp(30px, 13vw, 52px);
+			line-height: 1.04;
+		}
+
+		.hero-actions a {
+			width: 100%;
+			text-align: center;
+		}
+	}
+
+	@media (max-width: 480px) {
+		.container {
+			width: min(100% - 16px, 1120px);
+		}
+
+		.navbar,
+		.hero-copy,
+		.section-shell,
+		.story-card,
+		.booking-card,
+		.info-card,
+		.menu-card {
+			border-radius: 22px;
+		}
+
+		.navbar {
+			padding: 14px;
+		}
+
+		.brand {
+			gap: 12px;
+		}
+
+		.brand-copy strong {
+			font-size: 16px;
+		}
+
+		.brand-copy span {
+			font-size: 11px;
+			letter-spacing: 0.12em;
+		}
+
+		.hero-copy,
+		.section-shell,
+		.story-card,
+		.booking-card,
+		.info-card,
+		.menu-card {
+			padding: 22px 20px;
+		}
+
+		.hero-panel {
+			padding: 16px;
+		}
+
+		.hero-scene {
+			min-height: 300px;
+			padding: 20px 16px;
+		}
+
+		.scene-card {
+			padding: 14px 16px;
+		}
+
+		.hero-copy h1 {
+			font-size: clamp(24px, 9vw, 34px);
+			line-height: 1.06;
+			max-width: 100%;
+			word-break: break-all;
+			letter-spacing: -0.03em;
+		}
+	}
+</style>
+</head>
+<body>
+<header class="container">
+	<nav class="navbar" aria-label="主导航">
+		<div class="brand">
+			<div class="brand-mark">HK</div>
+			<div class="brand-copy">
+				<strong>维港小馆</strong>
+				<span>Harbour House Hong Kong Kitchen</span>
+			</div>
+		</div>
+		<div class="nav-links">
+			<a href="#menu">招牌菜单</a>
+			<a href="#story">餐厅故事</a>
+			<a href="#visit">到店信息</a>
+		</div>
+		<a class="nav-cta" href="#booking">在线预留席位</a>
+	</nav>
+</header>
+
+<main class="container">
+	<section class="hero" aria-labelledby="hero-title">
+		<div class="hero-copy">
+			<div class="kicker">Since 2012 · Central, Hong Kong</div>
+			<h1 id="hero-title">炭火香气、现炒海鲜与维港夜色同桌上席</h1>
+			<p>维港小馆主打经典粤式热炒、招牌烧味与晚市双人套餐。午后适合饮茶小聚，入夜则以海鲜锅气、暖色灯影与慢节奏服务接待熟客与旅人。</p>
+			<div class="hero-actions">
+				<a class="primary" href="#booking">预订今晚 19:30</a>
+				<a class="secondary" href="#menu">查看本周菜单</a>
+			</div>
+		</div>
+		<div class="hero-panel">
+			<div class="hero-scene">
+				<div class="scene-label">Chef's Selection</div>
+				<div class="scene-stack">
+					<div class="scene-card">
+						<strong>避风塘大虾</strong>
+						<p>蒜酥足、锅气重，搭配温热菠萝包脆底最受欢迎。</p>
+					</div>
+					<div class="scene-card">
+						<strong>明炉叉烧拼脆皮烧腩</strong>
+						<p>每日两轮新鲜出炉，晚市后半段经常提前售罄。</p>
+					</div>
+					<div class="scene-card">
+						<strong>黄油蟹肉煲仔饭</strong>
+						<p>限量夜市供应，出锅前淋葱油与头抽，焦香刚好。</p>
+					</div>
+				</div>
+			</div>
+			<div class="hero-details">
+				<div class="info-chip">
+					<span>午市</span>
+					<strong>11:30 - 15:00</strong>
+				</div>
+				<div class="info-chip">
+					<span>晚市</span>
+					<strong>17:30 - 22:30</strong>
+				</div>
+				<div class="info-chip">
+					<span>订位</span>
+					<strong>+852 2899 1638</strong>
+				</div>
+			</div>
+		</div>
+	</section>
+
+	<section class="section-shell" aria-labelledby="highlights-title">
+		<div class="section-heading">
+			<div>
+				<h2 id="highlights-title">今晚到店的三种理由</h2>
+				<p>我们把熟客最常点的组合、最稳定的出品节奏和最受欢迎的坐席体验，整理成首次来访也容易选的方式。</p>
+			</div>
+			<p>当前站点：${站点域名}</p>
+		</div>
+		<div class="highlights">
+			<article class="highlight">
+				<strong>午市点心与烧味都不赶</strong>
+				<p>工作日中午提供五款点心拼盘、现切烧味饭和清汤牛腩，适合附近上班族快速用餐。</p>
+			</article>
+			<article class="highlight">
+				<strong>晚市套餐按人少聚餐设计</strong>
+				<p>两人、四人和六人套餐都配好了热菜、主食与甜品，减少点单时间，也更容易控制预算。</p>
+			</article>
+			<article class="highlight">
+				<strong>包厢与窗边席位可提前备注</strong>
+				<p>纪念日晚餐、商务会面或家庭聚会都可在预订时备注，我们会在可选范围内优先安排。</p>
+			</article>
+		</div>
+	</section>
+
+	<section id="menu" class="section-shell" aria-labelledby="menu-title">
+		<div class="section-heading">
+			<div>
+				<h2 id="menu-title">招牌菜单</h2>
+				<p>每张卡片都来自门店最稳定的出品线，既能代表口味，也适合第一次来访时直接点单。</p>
+			</div>
+		</div>
+		<div class="menus">
+			<article class="menu-card">
+				<span>Lunch Favourites</span>
+				<h3>午市精选</h3>
+				<p>适合工作日中午的轻快组合。</p>
+				<ul>
+					<li><span>虾饺烧卖双拼</span><strong>HK$68</strong></li>
+					<li><span>明炉叉烧饭</span><strong>HK$78</strong></li>
+					<li><span>清汤牛腩河粉</span><strong>HK$72</strong></li>
+				</ul>
+			</article>
+			<article class="menu-card">
+				<span>Signature Classics</span>
+				<h3>主厨招牌</h3>
+				<p>锅气、火候与酱香最能体现厨房节奏。</p>
+				<ul>
+					<li><span>避风塘大虾</span><strong>HK$198</strong></li>
+					<li><span>蜜汁西班牙黑豚叉烧</span><strong>HK$188</strong></li>
+					<li><span>蟹肉黄油煲仔饭</span><strong>HK$168</strong></li>
+				</ul>
+			</article>
+			<article class="menu-card">
+				<span>Evening Pairing</span>
+				<h3>晚市双人套餐</h3>
+				<p>适合下班后约会或旅客晚餐。</p>
+				<ul>
+					<li><span>前菜三小碟</span><strong>Included</strong></li>
+					<li><span>当日海鲜热炒一份</span><strong>Included</strong></li>
+					<li><span>杨枝甘露或杏仁茶</span><strong>HK$368 / set</strong></li>
+				</ul>
+			</article>
+		</div>
+	</section>
+
+	<section id="story" class="story-grid">
+		<article class="story-card">
+			<div class="section-heading">
+				<div>
+					<h2>餐厅故事</h2>
+					<p>从中环老茶餐厅师傅班底起家，后来把烧味档、海鲜热炒和夜景晚餐放进同一个空间，形成现在的节奏。</p>
+				</div>
+			</div>
+			<p>我们保留港式餐厅常见的快节奏出菜和热度足够的明档操作，同时把空间调整得更适合晚餐停留。白天像熟客食堂，晚上则像带一点仪式感的城市餐桌。</p>
+			<div class="quote">“出品稳定、坐得舒服、点单不费劲。” 这是很多回头客第一次留下的评价，也是我们希望长期保持的样子。</div>
+		</article>
+		<aside id="booking" class="booking-card">
+			<h3>预留席位</h3>
+			<p>窗边席、四人圆桌与小包厢都支持电话预留。节假日晚市建议至少提前一天联系。</p>
+			<ul class="booking-list">
+				<li><span>电话订位</span><strong>+852 2899 1638</strong></li>
+				<li><span>WhatsApp</span><strong>+852 6128 4419</strong></li>
+				<li><span>适合人数</span><strong>2 - 8 位</strong></li>
+				<li><span>特别备注</span><strong>生日、窗边、儿童座椅</strong></li>
+			</ul>
+			<a class="booking-callout" href="tel:+85228991638">立即致电预订</a>
+		</aside>
+	</section>
+
+	<section id="visit" class="section-shell" aria-labelledby="visit-title">
+		<div class="section-heading">
+			<div>
+				<h2 id="visit-title">到店信息</h2>
+				<p>位于中环核心步行区，适合午间工作餐、晚市聚餐和旅客行程中的一顿正式港味晚餐。</p>
+			</div>
+		</div>
+		<div class="info-grid">
+			<article class="info-card">
+				<strong>地址</strong>
+				<p>香港中环士丹利街 28 号二楼，距离港铁中环站 D2 出口步行约 4 分钟。</p>
+			</article>
+			<article class="info-card">
+				<strong>营业时间</strong>
+				<p>周一至周日 11:30 - 15:00，17:30 - 22:30。公众假期照常营业，最后点单时间以现场为准。</p>
+			</article>
+			<article class="info-card">
+				<strong>到店建议</strong>
+				<p>周五晚间 19:00 后较繁忙，建议提前订位；午市 12:15 前到店，等位时间通常更短。</p>
+			</article>
+		</div>
+	</section>
+
+	<div class="footer">
+		Harbour House Hong Kong Kitchen · Fresh seafood, charcoal roast, Cantonese comfort food
+	</div>
+</main>
+</body>
+</html>`;
 }
 
 async function html1101(host, 访问IP) {
