@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 const CF_API_BASE = "https://api.cloudflare.com/client/v4";
@@ -32,10 +33,10 @@ async function main() {
 function loadConfigFromEnv(env) {
   const apiToken = requireEnv(env, "CF_API_TOKEN");
   const accountId = requireEnv(env, "CF_ACCOUNT_ID");
-  const workerName = requireEnv(env, "CF_WORKER_NAME");
   const kvNamespaceTitle = requireEnv(env, "CF_KV_NAMESPACE_TITLE");
+  const workerName = resolveWorkerName(env);
   const secretBindings = parseBindingsJson({
-    raw: requireEnv(env, "CF_WORKER_SECRET_BINDINGS_JSON"),
+    raw: env.CF_WORKER_SECRET_BINDINGS_JSON || "{}",
     envName: "CF_WORKER_SECRET_BINDINGS_JSON",
   });
   const plaintextBindings = parseBindingsJson({
@@ -44,10 +45,15 @@ function loadConfigFromEnv(env) {
   });
   const compatibilityDate = env.CF_COMPATIBILITY_DATE?.trim() || "";
   const commitSha = (env.GITHUB_SHA || "manual").trim();
+  const admin = env.ADMIN?.trim();
+
+  if (admin) {
+    secretBindings.ADMIN = admin;
+  }
 
   if (!Object.prototype.hasOwnProperty.call(secretBindings, "ADMIN")) {
     throw new Error(
-      'CF_WORKER_SECRET_BINDINGS_JSON must include an "ADMIN" property so the admin password stays stable.',
+      'Missing admin password. Set GitHub Secret "ADMIN" or include "ADMIN" in CF_WORKER_SECRET_BINDINGS_JSON.',
     );
   }
 
@@ -69,6 +75,37 @@ function requireEnv(env, name) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
+}
+
+function resolveWorkerName(env) {
+  const configuredName = env.CF_WORKER_NAME?.trim();
+  if (configuredName) {
+    return configuredName;
+  }
+
+  const repositoryId = env.GITHUB_REPOSITORY_ID?.trim();
+  const repository = env.GITHUB_REPOSITORY?.trim() || "repo";
+  if (!repositoryId) {
+    throw new Error(
+      "CF_WORKER_NAME is not set and GITHUB_REPOSITORY_ID is unavailable, so a stable Worker name cannot be generated.",
+    );
+  }
+
+  const repoSlug = repository
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24) || "repo";
+  const suffix = createHash("sha256")
+    .update(`${repositoryId}:${repository}`)
+    .digest("hex")
+    .slice(0, 10);
+  const generatedName = `edt-${repoSlug}-${suffix}`.slice(0, 63);
+
+  console.log(
+    `CF_WORKER_NAME is not set. Using auto-generated stable Worker name "${generatedName}".`,
+  );
+  return generatedName;
 }
 
 function parseBindingsJson({ raw, envName }) {

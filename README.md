@@ -76,20 +76,20 @@
    - 记录你的 **Account ID**。
 
 3. 在 GitHub 仓库 `Settings > Secrets and variables > Actions` 中配置 Secrets：
+   - `ADMIN`：后台管理员密码，推荐直接单独配置这个 Secret
    - `CF_API_TOKEN`
    - `CF_ACCOUNT_ID`
-   - `CF_WORKER_SECRET_BINDINGS_JSON`
-   - `CF_WORKER_SECRET_BINDINGS_JSON` 至少需要包含 `ADMIN`，例如：
+   - `CF_WORKER_SECRET_BINDINGS_JSON`：可选，用来放 `KEY` 等其他敏感变量
+   - 示例：
    ```json
    {
-     "ADMIN": "123456",
-     "KEY": "CMLiussss",
-     "UUID": "90cd4a77-141a-43c9-991b-08263cfe9c10"
+     "KEY": "CMLiussss"
    }
    ```
+   - `UUID` 默认**不用填**，Worker 会根据现有逻辑自动生成；如果你后续想强制固定 UUID，再把 `UUID` 加进 `CF_WORKER_SECRET_BINDINGS_JSON`
 
 4. 在同一页面配置 Variables：
-   - `CF_WORKER_NAME`：固定 Worker 名称，例如 `edgetunnel-prod`
+   - `CF_WORKER_NAME`：可选；不填时，workflow 会根据当前 GitHub 仓库自动生成一个稳定不变的 Worker 名称
    - `CF_KV_NAMESPACE_TITLE`：固定 KV 标题，例如 `edgetunnel-prod-kv`
    - `CF_WORKER_PLAINTEXT_BINDINGS_JSON`：可选，放非敏感配置，例如：
    ```json
@@ -111,9 +111,11 @@
    - 也可以在 GitHub Actions 页面手动执行 `Deploy Worker via API`。
 
 6. 持久化和稳定性说明：
+   - `CF_WORKER_NAME` 留空时，会自动生成一个稳定可复用的名称，不会每次部署都变；如果你已经手动绑定了 route / custom domain，仍然建议显式填写 `CF_WORKER_NAME`
    - 工作流会先按 `CF_KV_NAMESPACE_TITLE` 查询 KV；找不到就自动创建，找到就直接复用。
    - 因为复用的是同一个 KV，后台里的 `config.json`、`cf.json`、`tg.json`、`log.json` 不会因为代码更新被清空。
-   - `ADMIN` 来自 `CF_WORKER_SECRET_BINDINGS_JSON`，只要这个 Secret 不变，管理员密码就稳定不变。
+   - `ADMIN` 来自 GitHub Secret `ADMIN`，只要这个 Secret 不变，管理员密码就稳定不变。
+   - `UUID` 默认自动生成；只有你主动传入 `UUID` 时，才会固定成指定值。
 
 </details>
 
