@@ -59,6 +59,64 @@
 
 </details>
 
+### 🤖 GitHub Actions 自动部署 Workers
+
+<details>
+<summary><code><strong>「 GitHub Actions + Cloudflare API 自动部署 」</strong></code></summary>
+
+1. Fork 本项目并保留固定 Worker 名称：
+   - 后续**不要随意修改** `CF_WORKER_NAME`，它对应 Cloudflare 的 `script_name`，现有 route / custom domain 都挂在这个名字上。
+   - 这套工作流只更新同一个 Worker 的代码与绑定，不会帮你创建或改写域名、route、自定义域。
+
+2. 在 Cloudflare 创建 API Token：
+   - 推荐最小权限至少包含：
+     - `Workers Scripts: Edit`
+     - `Workers KV Storage: Read`
+     - `Workers KV Storage: Edit`
+   - 记录你的 **Account ID**。
+
+3. 在 GitHub 仓库 `Settings > Secrets and variables > Actions` 中配置 Secrets：
+   - `CF_API_TOKEN`
+   - `CF_ACCOUNT_ID`
+   - `CF_WORKER_SECRET_BINDINGS_JSON`
+   - `CF_WORKER_SECRET_BINDINGS_JSON` 至少需要包含 `ADMIN`，例如：
+   ```json
+   {
+     "ADMIN": "123456",
+     "KEY": "CMLiussss",
+     "UUID": "90cd4a77-141a-43c9-991b-08263cfe9c10"
+   }
+   ```
+
+4. 在同一页面配置 Variables：
+   - `CF_WORKER_NAME`：固定 Worker 名称，例如 `edgetunnel-prod`
+   - `CF_KV_NAMESPACE_TITLE`：固定 KV 标题，例如 `edgetunnel-prod-kv`
+   - `CF_WORKER_PLAINTEXT_BINDINGS_JSON`：可选，放非敏感配置，例如：
+   ```json
+   {
+     "HOST": "vless.example.com",
+     "PATH": "/",
+     "PROXYIP": "proxyip.cmliussss.net:443",
+     "URL": "https://cloudflare-error-page-3th.pages.dev",
+     "GO2SOCKS5": "*.ip111.cn,*google.com",
+     "DEBUG": "false",
+     "OFF_LOG": "false",
+     "BEST_SUB": "false"
+   }
+   ```
+   - `CF_COMPATIBILITY_DATE`：可选；留空时会自动读取仓库里的 `wrangler.toml`
+
+5. 触发部署：
+   - 推送 `_worker.js`、`wrangler.toml`、部署脚本或 workflow 变更到默认分支时，会自动部署。
+   - 也可以在 GitHub Actions 页面手动执行 `Deploy Worker via API`。
+
+6. 持久化和稳定性说明：
+   - 工作流会先按 `CF_KV_NAMESPACE_TITLE` 查询 KV；找不到就自动创建，找到就直接复用。
+   - 因为复用的是同一个 KV，后台里的 `config.json`、`cf.json`、`tg.json`、`log.json` 不会因为代码更新被清空。
+   - `ADMIN` 来自 `CF_WORKER_SECRET_BINDINGS_JSON`，只要这个 Secret 不变，管理员密码就稳定不变。
+
+</details>
+
 ### 🛠 Pages 上传 部署方法 **最佳推荐!!!** [图文教程](https://cmliussss.com/p/edt2/)
 
 <details>
